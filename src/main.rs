@@ -1,15 +1,21 @@
-use image::{ImageBuffer, Rgb};
+use image::{ImageBuffer, Rgb, RgbImage};
 use rand::Rng;
 use rand_chacha::ChaCha8Rng;
 use rand::SeedableRng;
 use std::f64::consts::PI;
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::fs::File;
+use gif::{Frame, Encoder, Repeat};
+use std::collections::HashMap;
 
 const WIDTH: u32 = 1200;
 const HEIGHT: u32 = 800;
 const NUM_SNOWFLAKES: usize = 300;
 const PIXEL_SIZE: i32 = 8;  // Doubled from 4 to 8
+const NUM_FRAMES: u32 = 100;  // Increased from 50 to 100 frames
+const MOVEMENT_SPEED: f64 = 0.01;  // Reduced from 0.02 to 0.01 for smoother motion
 
+#[derive(Clone)]
 struct Penguin {
     x: u32,
     y: u32,
@@ -282,57 +288,115 @@ fn draw_ground(img: &mut ImageBuffer<Rgb<u8>, Vec<u8>>) {
     }
 }
 
-fn main() {
-    let mut img = ImageBuffer::new(WIDTH, HEIGHT);
+fn update_penguin_position(penguin: &mut Penguin) {
+    // Move penguin forward (decrease z)
+    penguin.z -= MOVEMENT_SPEED;
     
-    // Get current time as seed
+    // If penguin gets too close, reset to back
+    if penguin.z < 0.0 {
+        penguin.z = 1.0;
+    }
+    
+    // Update y position based on new z
+    let horizon_y = HEIGHT as f64 * 0.4;
+    let y_offset = penguin.z * horizon_y * 0.3;
+    let y_range_start = (horizon_y + y_offset) as u32;
+    let y_range_end = HEIGHT - penguin.size - (HEIGHT / 8);
+    penguin.y = y_range_start + (y_range_end - y_range_start) / 2;
+}
+
+fn create_frame(img: &RgbImage) -> Frame<'static> {
+    // Convert RGB image to indexed colors (required for GIF)
+    let mut pixels = Vec::new();
+    let mut palette = vec![0u8; 768]; // 256 RGB colors
+    let mut color_map = HashMap::new();
+    let mut next_color_index = 0;
+
+    // Initialize with some basic colors we know we'll use
+    // White (for snow)
+    palette[0] = 255; palette[1] = 255; palette[2] = 255;
+    // Black (for eyes)
+    palette[3] = 0; palette[4] = 0; palette[5] = 0;
+    // Brown (for knife handle)
+    palette[6] = 139; palette[7] = 69; palette[8] = 19;
+    // Silver (for knife blade)
+    palette[9] = 192; palette[10] = 192; palette[11] = 192;
+    next_color_index = 4;
+
+    // Convert image to indexed colors
+    for pixel in img.pixels() {
+        let key = (pixel[0], pixel[1], pixel[2]);
+        let color_index = if let Some(&idx) = color_map.get(&key) {
+            idx
+        } else {
+            if next_color_index < 256 {
+                let idx = next_color_index;
+                palette[idx * 3] = key.0;
+                palette[idx * 3 + 1] = key.1;
+                palette[idx * 3 + 2] = key.2;
+                color_map.insert(key, idx);
+                next_color_index += 1;
+                idx
+            } else {
+                // If we run out of colors, use the closest existing one
+                0 // Default to first color if we run out
+            }
+        };
+        pixels.push(color_index as u8);
+    }
+
+    // Trim palette to actually used colors
+    palette.truncate(next_color_index * 3);
+
+    Frame {
+        width: WIDTH as u16,
+        height: HEIGHT as u16,
+        buffer: pixels.into(),
+        delay: 2,  // Reduced from 5 to 2 (2/100ths of a second) for smoother animation
+        transparent: None,
+        needs_user_input: false,
+        top: 0,
+        left: 0,
+        dispose: gif::DisposalMethod::Keep,
+        interlaced: false,
+        palette: Some(palette),
+    }
+}
+
+fn main() {
+    // Setup GIF encoder with global color table
+    let mut image_file = File::create("penguin_rush.gif").unwrap();
+    let mut encoder = Encoder::new(&mut image_file, WIDTH as u16, HEIGHT as u16, &[]).unwrap();
+    encoder.set_repeat(Repeat::Infinite).unwrap();
+    
+    // Initialize RNG
     let seed = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs();
     let mut rng = ChaCha8Rng::seed_from_u64(seed);
     
-    // Get random sky theme
+    // Get random sky theme (stays constant through animation)
     let sky_theme = get_random_sky_theme(&mut rng);
     
-    // Draw sky gradient with the chosen theme
-    draw_sky_gradient(&mut img, &sky_theme);
-    
-    // Draw ground
-    draw_ground(&mut img);
-    
-    // Generate and draw snowflakes
-    let snowflakes = generate_snowflakes(&mut rng);
-    for snowflake in snowflakes.iter() {
-        draw_snowflake(&mut img, snowflake);
-    }
-    
-    // Generate random penguins with depth
+    // Generate initial penguins with their permanent colors
     let mut penguins: Vec<Penguin> = Vec::new();
-    
-    // Randomly determine number of penguins (2-6)
     let num_penguins = rng.gen_range(2..=6);
-    
-    // Create sections for penguin placement
     let section_width = WIDTH / num_penguins as u32;
     
-    for i in 0..num_penguins {
-        let z = rng.gen_range(0.0..1.0);  // Random depth
-        let size = rng.gen_range(80..160); // Slightly smaller size range
+    // Pre-generate colors for each penguin
+    let penguin_colors: Vec<Rgb<u8>> = (0..num_penguins)
+        .map(|_| generate_random_color(&mut rng))
+        .collect();
+    
+    for (i, &color) in (0..num_penguins).zip(penguin_colors.iter()) {
+        let z = rng.gen_range(0.0..1.0);
+        let size = rng.gen_range(80..160);
         
-        // Calculate y position based on depth - higher z (further back) means higher up on screen
-        let horizon_y = HEIGHT as f64 * 0.4;
-        let y_offset = z * horizon_y * 0.3; // Move further penguins up towards horizon
-        let y_range_start = (horizon_y + y_offset) as u32;
-        let y_range_end = HEIGHT - size - (HEIGHT / 8);
-        let y = rng.gen_range(y_range_start..y_range_end);
-        
-        // Calculate x position within the section
         let section_start = section_width * i as u32;
         let section_end = section_width * (i + 1) as u32;
-        let margin = size / 2; // Reduced margin to allow more natural placement
+        let margin = size / 2;
         
-        // Ensure penguin stays within its section while accounting for its size
         let x_min = section_start.saturating_add(margin);
         let x_max = section_end.saturating_sub(margin);
         
@@ -342,26 +406,52 @@ fn main() {
             rng.gen_range(x_min..x_max)
         };
         
+        let horizon_y = HEIGHT as f64 * 0.4;
+        let y_offset = z * horizon_y * 0.3;
+        let y_range_start = (horizon_y + y_offset) as u32;
+        let y_range_end = HEIGHT - size - (HEIGHT / 8);
+        let y = rng.gen_range(y_range_start..y_range_end);
+        
         penguins.push(Penguin {
             x,
             y,
             z,
             size,
-            color: generate_random_color(&mut rng),
+            color,  // Use the pre-generated color
             belly_color: Rgb([230, 230, 230]),
             rotation: rng.gen_range(-0.2..0.2),
             knife_hand: rng.gen_bool(0.5),
         });
     }
     
-    // Sort penguins by depth (z) to draw back to front
-    penguins.sort_by(|a, b| b.z.partial_cmp(&a.z).unwrap());
-    
-    // Draw penguins
-    for penguin in penguins.iter() {
-        draw_penguin(&mut img, penguin);
+    // Generate frames
+    for _ in 0..NUM_FRAMES {
+        let mut img = ImageBuffer::new(WIDTH, HEIGHT);
+        
+        // Draw sky
+        draw_sky_gradient(&mut img, &sky_theme);
+        
+        // Draw ground
+        draw_ground(&mut img);
+        
+        // Generate and draw snowflakes (new each frame for animation effect)
+        let snowflakes = generate_snowflakes(&mut rng);
+        for snowflake in snowflakes.iter() {
+            draw_snowflake(&mut img, snowflake);
+        }
+        
+        // Update and sort penguins by depth
+        for penguin in penguins.iter_mut() {
+            update_penguin_position(penguin);
+        }
+        penguins.sort_by(|a, b| b.z.partial_cmp(&a.z).unwrap());
+        
+        // Draw penguins
+        for penguin in penguins.iter() {
+            draw_penguin(&mut img, penguin);
+        }
+        
+        // Add frame to GIF
+        encoder.write_frame(&create_frame(&img)).unwrap();
     }
-    
-    // Save the image
-    img.save("output.png").unwrap();
 }
