@@ -66,9 +66,28 @@ fn draw_penguin(img: &mut ImageBuffer<Rgb<u8>, Vec<u8>>, penguin: &Penguin) {
         ((penguin.color[2] as f64) * depth_factor) as u8,
     ]));
     
-    // Shadow (simple rectangle)
-    let shadow_offset = (penguin.z * 2.0) as i32;
-    draw_rect(img, base_x + shadow_offset, base_y + shadow_offset, size, size/2, Rgb([0, 0, 0]));
+    // Draw short legs (always 3 pixels tall)
+    let leg_height = 3;
+    let leg_width = 2;
+    let leg_spacing = size / 3;
+    
+    // Left leg
+    draw_rect(img, 
+        base_x + leg_spacing - leg_width/2,
+        base_y + size,
+        leg_width,
+        leg_height,
+        color
+    );
+    
+    // Right leg
+    draw_rect(img, 
+        base_x + size - leg_spacing - leg_width/2,
+        base_y + size,
+        leg_width,
+        leg_height,
+        color
+    );
     
     // Body (rectangular)
     draw_rect(img, base_x, base_y, size, size, color);
@@ -153,13 +172,55 @@ fn generate_random_color(rng: &mut ChaCha8Rng) -> Rgb<u8> {
     ])
 }
 
-fn draw_sky_gradient(img: &mut ImageBuffer<Rgb<u8>, Vec<u8>>) {
+enum SkyTheme {
+    Day,
+    Dawn,
+    Dusk,
+    Night,
+    Aurora,
+}
+
+fn get_random_sky_theme(rng: &mut ChaCha8Rng) -> SkyTheme {
+    match rng.gen_range(0..5) {
+        0 => SkyTheme::Day,
+        1 => SkyTheme::Dawn,
+        2 => SkyTheme::Dusk,
+        3 => SkyTheme::Night,
+        _ => SkyTheme::Aurora,
+    }
+}
+
+fn draw_sky_gradient(img: &mut ImageBuffer<Rgb<u8>, Vec<u8>>, theme: &SkyTheme) {
+    let (top_color, bottom_color) = match theme {
+        SkyTheme::Day => (
+            (100, 150, 255),   // Light blue top
+            (180, 220, 255)    // Lighter blue bottom
+        ),
+        SkyTheme::Dawn => (
+            (70, 100, 150),    // Dark blue top
+            (255, 180, 150)    // Pink/orange bottom
+        ),
+        SkyTheme::Dusk => (
+            (60, 80, 120),     // Dark blue top
+            (255, 140, 100)    // Orange/red bottom
+        ),
+        SkyTheme::Night => (
+            (10, 20, 40),      // Very dark blue top
+            (40, 50, 80)       // Slightly lighter blue bottom
+        ),
+        SkyTheme::Aurora => (
+            (20, 40, 60),      // Dark blue-green top
+            (40, 180, 120)     // Green-teal bottom
+        ),
+    };
+
     for y in 0..HEIGHT {
-        // Calculate gradient color based on y position
         let progress = y as f64 / HEIGHT as f64;
-        let r = (100.0 + (130.0 * (1.0 - progress))) as u8; // Darker blue at top
-        let g = (150.0 + (80.0 * (1.0 - progress))) as u8;
-        let b = (200.0 + (55.0 * (1.0 - progress))) as u8;
+        
+        // Interpolate between top and bottom colors
+        let r = (top_color.0 as f64 * (1.0 - progress) + bottom_color.0 as f64 * progress) as u8;
+        let g = (top_color.1 as f64 * (1.0 - progress) + bottom_color.1 as f64 * progress) as u8;
+        let b = (top_color.2 as f64 * (1.0 - progress) + bottom_color.2 as f64 * progress) as u8;
         
         for x in 0..WIDTH {
             img.put_pixel(x, y, Rgb([r, g, b]));
@@ -200,6 +261,27 @@ fn draw_snowflake(img: &mut ImageBuffer<Rgb<u8>, Vec<u8>>, snowflake: &Snowflake
     }
 }
 
+fn draw_ground(img: &mut ImageBuffer<Rgb<u8>, Vec<u8>>) {
+    let horizon_y = (HEIGHT as f64 * 0.4) as u32;
+    
+    for y in horizon_y..HEIGHT {
+        // Calculate progress from horizon to bottom
+        let progress = (y - horizon_y) as f64 / (HEIGHT - horizon_y) as f64;
+        
+        // Create a snowy ground effect that gets darker towards the horizon
+        let base_value = 255.0 - (40.0 * (1.0 - progress));
+        let color = Rgb([
+            base_value as u8,
+            base_value as u8,
+            base_value as u8,
+        ]);
+        
+        for x in 0..WIDTH {
+            img.put_pixel(x, y, color);
+        }
+    }
+}
+
 fn main() {
     let mut img = ImageBuffer::new(WIDTH, HEIGHT);
     
@@ -210,8 +292,14 @@ fn main() {
         .as_secs();
     let mut rng = ChaCha8Rng::seed_from_u64(seed);
     
-    // Draw sky gradient
-    draw_sky_gradient(&mut img);
+    // Get random sky theme
+    let sky_theme = get_random_sky_theme(&mut rng);
+    
+    // Draw sky gradient with the chosen theme
+    draw_sky_gradient(&mut img, &sky_theme);
+    
+    // Draw ground
+    draw_ground(&mut img);
     
     // Generate and draw snowflakes
     let snowflakes = generate_snowflakes(&mut rng);
@@ -222,35 +310,36 @@ fn main() {
     // Generate random penguins with depth
     let mut penguins: Vec<Penguin> = Vec::new();
     
-    // Randomly determine number of penguins (1-5)
-    let num_penguins = rng.gen_range(1..=5);
+    // Randomly determine number of penguins (2-6)
+    let num_penguins = rng.gen_range(2..=6);
     
     // Create sections for penguin placement
     let section_width = WIDTH / num_penguins as u32;
     
     for i in 0..num_penguins {
         let z = rng.gen_range(0.0..1.0);  // Random depth
-        let size = rng.gen_range(80..200); // Size range for prominent penguins
+        let size = rng.gen_range(80..160); // Slightly smaller size range
         
-        // Calculate y position based on depth
-        let y_range_start = (HEIGHT as f64 * 0.4 + z * HEIGHT as f64 * 0.2) as u32;
+        // Calculate y position based on depth - higher z (further back) means higher up on screen
+        let horizon_y = HEIGHT as f64 * 0.4;
+        let y_offset = z * horizon_y * 0.3; // Move further penguins up towards horizon
+        let y_range_start = (horizon_y + y_offset) as u32;
         let y_range_end = HEIGHT - size - (HEIGHT / 8);
         let y = rng.gen_range(y_range_start..y_range_end);
         
         // Calculate x position within the section
         let section_start = section_width * i as u32;
         let section_end = section_width * (i + 1) as u32;
-        let margin = size; // Keep margin equal to penguin size
+        let margin = size / 2; // Reduced margin to allow more natural placement
         
         // Ensure penguin stays within its section while accounting for its size
         let x_min = section_start.saturating_add(margin);
         let x_max = section_end.saturating_sub(margin);
         
-        // If section is too narrow, center the penguin
         let x = if x_max <= x_min {
             (section_start + section_end) / 2
         } else {
-            rng.gen_range(x_min..=x_max)
+            rng.gen_range(x_min..x_max)
         };
         
         penguins.push(Penguin {
@@ -259,36 +348,20 @@ fn main() {
             z,
             size,
             color: generate_random_color(&mut rng),
-            belly_color: Rgb([
-                rng.gen_range(200..=255),
-                rng.gen_range(200..=255),
-                rng.gen_range(200..=255),
-            ]),
-            rotation: rng.gen_range(0.0..2.0 * PI),
+            belly_color: Rgb([230, 230, 230]),
+            rotation: rng.gen_range(-0.2..0.2),
             knife_hand: rng.gen_bool(0.5),
         });
     }
     
-    // Sort penguins by depth (back to front)
+    // Sort penguins by depth (z) to draw back to front
     penguins.sort_by(|a, b| b.z.partial_cmp(&a.z).unwrap());
     
-    // Draw all penguins
+    // Draw penguins
     for penguin in penguins.iter() {
         draw_penguin(&mut img, penguin);
     }
-
-    // Add ground/snow effect at the bottom with more pronounced shadows
-    let snow_height = HEIGHT / 6;  // Reduced from HEIGHT/4 to HEIGHT/6
-    for y in (HEIGHT - snow_height)..HEIGHT {
-        let progress = (y - (HEIGHT - snow_height)) as f64 / snow_height as f64;
-        let brightness = 235 - (progress * 40.0) as u8;  // Reduced from 255 to 235, increased darkening
-        for x in 0..WIDTH {
-            let noise = rng.gen_range(-10..=10);  // Reduced noise range from ±15 to ±10
-            let color = brightness.saturating_add(noise as u8);
-            img.put_pixel(x, y, Rgb([color, color, color]));
-        }
-    }
-
-    img.save("penguin_art.png").unwrap();
-    println!("Generated penguin art has been saved as 'penguin_art.png'");
+    
+    // Save the image
+    img.save("output.png").unwrap();
 }
