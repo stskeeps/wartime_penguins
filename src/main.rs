@@ -7,7 +7,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 const WIDTH: u32 = 1200;
 const HEIGHT: u32 = 800;
-const NUM_PENGUINS: usize = 5;
 const NUM_SNOWFLAKES: usize = 300;
 const PIXEL_SIZE: i32 = 8;  // Doubled from 4 to 8
 
@@ -223,10 +222,13 @@ fn main() {
     // Generate random penguins with depth
     let mut penguins: Vec<Penguin> = Vec::new();
     
-    // Create sections for penguin placement
-    let section_width = WIDTH / NUM_PENGUINS as u32;
+    // Randomly determine number of penguins (1-5)
+    let num_penguins = rng.gen_range(1..=5);
     
-    for i in 0..NUM_PENGUINS {
+    // Create sections for penguin placement
+    let section_width = WIDTH / num_penguins as u32;
+    
+    for i in 0..num_penguins {
         let z = rng.gen_range(0.0..1.0);  // Random depth
         let size = rng.gen_range(80..200); // Size range for prominent penguins
         
