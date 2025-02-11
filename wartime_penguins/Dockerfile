@@ -1,4 +1,21 @@
 # syntax=docker.io/docker/dockerfile:1
+FROM golang:1.21 AS kubo-build
+
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends llvm
+RUN git clone https://github.com/zippiehq/cartesi-kubo -b ipfs-cartesi kubo && cd kubo && git checkout a9042bef91cf09f140bbf38034dca486d752d3f8
+
+WORKDIR /app/kubo
+RUN go mod download
+
+COPY ./sys_linux_riscv64.go \
+    /go/pkg/mod/github.com/marten-seemann/tcp@v0.0.0-20210406111302-dfbc87cc63fd/sys_linux_riscv64.go
+
+RUN GOOS=linux GOARCH=riscv64 CGO_ENABLED=0 make nofuse
+
+RUN llvm-strip -s /app/kubo/cmd/ipfs/ipfs
+
+
 FROM ubuntu:22.04 AS builder
 
 ENV RUSTUP_HOME=/usr/local/rustup \
@@ -44,8 +61,7 @@ COPY . .
 RUN rm -f Cargo.lock && cargo generate-lockfile
 RUN cargo build --release
 
-RUN rm -f Cargo.lock && cargo generate-lockfile
-RUN cargo build --release
+RUN chmod +x /opt/cartesi/dapp/target/riscv64gc-unknown-linux-gnu/release/dapp
 
 FROM --platform=linux/riscv64 ubuntu:22.04
 
@@ -57,7 +73,9 @@ RUN <<EOF
 set -e
 apt-get update
 apt-get install -y --no-install-recommends \
-    busybox-static=1:1.30.1-7ubuntu3
+    busybox-static=1:1.30.1-7ubuntu3 \
+    netcat-traditional \
+    ca-certificates
 rm -rf /var/lib/apt/lists/* /var/log/* /var/cache/*
 useradd --create-home --user-group dapp
 EOF
@@ -70,9 +88,12 @@ RUN dpkg -i /machine-emulator-tools-v${MACHINE_EMULATOR_TOOLS_VERSION}.deb \
 ENV PATH="/opt/cartesi/bin:/opt/cartesi/dapp:${PATH}"
 
 WORKDIR /opt/cartesi/dapp
+COPY --from=kubo-build /app/kubo/cmd/ipfs/ipfs /usr/bin/ipfs
+RUN chmod +x /usr/bin/ipfs
 COPY --from=builder /opt/cartesi/dapp/target/riscv64gc-unknown-linux-gnu/release/dapp .
+COPY ./startup.sh /startup.sh
+RUN chmod +x /startup.sh
 
 ENV ROLLUP_HTTP_SERVER_URL="http://127.0.0.1:5004"
 
-ENTRYPOINT ["rollup-init"]
-CMD ["dapp"]
+ENTRYPOINT ["/startup.sh"]

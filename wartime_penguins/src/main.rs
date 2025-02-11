@@ -367,7 +367,7 @@ fn create_frame(img: &RgbImage) -> Frame<'static> {
 
 pub fn generate_penguin_gif() -> Result<(), Box<dyn std::error::Error>> {
     // Setup GIF encoder with global color table
-    let mut image_file = File::create("penguin_rush.gif")?;
+    let mut image_file = File::create("/tmp/penguin_rush.gif")?;
     let mut encoder = Encoder::new(&mut image_file, WIDTH as u16, HEIGHT as u16, &[])?;
     encoder.set_repeat(Repeat::Infinite)?;
 
