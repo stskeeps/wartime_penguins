@@ -44,8 +44,7 @@ COPY . .
 RUN rm -f Cargo.lock && cargo generate-lockfile
 RUN cargo build --release
 
-RUN rm -f Cargo.lock && cargo generate-lockfile
-RUN cargo build --release
+RUN chmod +x /opt/cartesi/dapp/target/riscv64gc-unknown-linux-gnu/release/dapp
 
 FROM --platform=linux/riscv64 ubuntu:22.04
 
