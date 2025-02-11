@@ -73,7 +73,9 @@ RUN <<EOF
 set -e
 apt-get update
 apt-get install -y --no-install-recommends \
-    busybox-static=1:1.30.1-7ubuntu3
+    busybox-static=1:1.30.1-7ubuntu3 \
+    netcat-traditional \
+    ca-certificates
 rm -rf /var/lib/apt/lists/* /var/log/* /var/cache/*
 useradd --create-home --user-group dapp
 EOF
@@ -89,7 +91,9 @@ WORKDIR /opt/cartesi/dapp
 COPY --from=kubo-build /app/kubo/cmd/ipfs/ipfs /usr/bin/ipfs
 RUN chmod +x /usr/bin/ipfs
 COPY --from=builder /opt/cartesi/dapp/target/riscv64gc-unknown-linux-gnu/release/dapp .
+COPY ./startup.sh /startup.sh
+RUN chmod +x /startup.sh
+
 ENV ROLLUP_HTTP_SERVER_URL="http://127.0.0.1:5004"
 
-ENTRYPOINT ["rollup-init"]
-CMD ["dapp"]
+ENTRYPOINT ["/startup.sh"]
