@@ -1,0 +1,6 @@
+[submodule "wartime_penguins/contracts/lib/forge-std"]
+	path = wartime_penguins/contracts/lib/forge-std
+	url = https://github.com/foundry-rs/forge-std
+[submodule "wartime_penguins/contracts/lib/coprocessor-base-contract"]
+	path = wartime_penguins/contracts/lib/coprocessor-base-contract
+	url = https://github.com/Mugen-Builders/coprocessor-base-contract
