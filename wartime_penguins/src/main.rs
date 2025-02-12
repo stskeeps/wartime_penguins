@@ -624,17 +624,14 @@ async fn emit_abi_encoded_notice(
 pub async fn generate_penguin_gif(
     client: &hyper::Client<hyper::client::HttpConnector>,
     server_addr: &str,
+    seed: u64,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Setup GIF encoder with global color table
     let mut image_file = File::create("/tmp/penguin_rush.gif")?;
     let mut encoder = Encoder::new(&mut image_file, WIDTH as u16, HEIGHT as u16, &[])?;
     encoder.set_repeat(Repeat::Infinite)?;
 
-    // Initialize RNG
-    let seed = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
+    // Initialize RNG with provided seed
     let mut rng = ChaCha8Rng::seed_from_u64(seed);
 
     // Get random sky theme (stays constant through animation)
@@ -757,8 +754,21 @@ pub async fn handle_advance(
     request: JsonValue,
 ) -> Result<&'static str, Box<dyn std::error::Error>> {
     println!("Received advance request data {}", &request);
-    let _payload = request["data"]["payload"].as_str().ok_or("Missing payload")?;
-    generate_penguin_gif(client, server_addr).await?;
+    let payload = request["data"]["payload"].as_str().ok_or("Missing payload")?;
+    
+    // Remove "0x" prefix and decode hex
+    let payload_bytes = hex::decode(&payload[2..])?;
+    
+    // Calculate keccak hash of payload
+    let mut keccak = Keccak::v256();
+    let mut hash = [0u8; 32];
+    keccak.update(&payload_bytes);
+    keccak.finalize(&mut hash);
+    
+    // Use first 8 bytes of hash as seed
+    let seed = u64::from_be_bytes(hash[0..8].try_into().unwrap());
+    
+    generate_penguin_gif(client, server_addr, seed).await?;
     Ok("accept")
 }
 
