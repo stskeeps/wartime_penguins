@@ -4,3 +4,6 @@
 [submodule "wartime_penguins/contracts/lib/coprocessor-base-contract"]
 	path = wartime_penguins/contracts/lib/coprocessor-base-contract
 	url = https://github.com/Mugen-Builders/coprocessor-base-contract
+[submodule "wartime_penguins/contracts/lib/openzeppelin-contracts"]
+	path = wartime_penguins/contracts/lib/openzeppelin-contracts
+	url = https://github.com/openzeppelin/openzeppelin-contracts
