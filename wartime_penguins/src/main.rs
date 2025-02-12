@@ -566,7 +566,7 @@ async fn process_ipfs_blocks(
     for block_cid in ipfs_blocks {
         // Verify CID uses keccak-256
         if !verify_keccak_cid(block_cid)? {
-            return Err("Block CID does not use keccak-256 multihash".into());
+            return Err(format!("Block CID {:?} does not use keccak-256 multihash", block_cid).into());
         }
         
         // Get block data
