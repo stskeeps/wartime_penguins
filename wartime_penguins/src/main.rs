@@ -9,11 +9,15 @@ use std::collections::HashMap;
 use json::{object, JsonValue};
 use std::env;
 use hyper::Client;
-use ipfs_api_backend_hyper::{IpfsApi, IpfsClient};
+use ipfs_api_backend_hyper::{IpfsApi, IpfsClient, TryFromUri, request::ApiRequest};
 use std::io::Cursor;
 use hex;
 use tiny_keccak::{Hasher, Keccak};
 use serde_json::json;
+use ethabi::{Token, encode};
+use ciborium;
+use cid::Cid;
+use multihash::{Code, MultihashDigest};
 
 const WIDTH: u32 = 1200;
 const HEIGHT: u32 = 800;
@@ -375,23 +379,6 @@ fn rgb_to_hex(color: &Rgb<u8>) -> String {
     format!("#{:02x}{:02x}{:02x}", color[0], color[1], color[2])
 }
 
-async fn emit_notice(
-    client: &hyper::Client<hyper::client::HttpConnector>,
-    server_addr: &str,
-    data: Vec<u8>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let hex_string = format!("0x{}", hex::encode(&data));
-    let notice = object! { "payload" => hex_string };
-    let notice_request = hyper::Request::builder()
-        .method(hyper::Method::POST)
-        .uri(format!("{}/notice", server_addr))
-        .header("Content-Type", "application/json")
-        .body(hyper::Body::from(notice.dump()))?;
-
-    let _response = client.request(notice_request).await?;
-    Ok(())
-}
-
 async fn emit_image_keccak256(
     client: &hyper::Client<hyper::client::HttpConnector>,
     server_addr: &str,
@@ -428,11 +415,38 @@ async fn emit_image_keccak256(
     Ok(hash)
 }
 
+async fn emit_notice(
+    client: &hyper::Client<hyper::client::HttpConnector>,
+    server_addr: &str,
+    data: Vec<u8>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let hex_string = format!("0x{}", hex::encode(&data));
+    let notice = object! { "payload" => hex_string };
+    let notice_request = hyper::Request::builder()
+        .method(hyper::Method::POST)
+        .uri(format!("{}/notice", server_addr))
+        .header("Content-Type", "application/json")
+        .body(hyper::Body::from(notice.dump()))?;
+
+    let _response = client.request(notice_request).await?;
+    Ok(())
+}
+
+async fn ipfs_add_with_keccak(ipfs: &IpfsClient, data: Vec<u8>) -> Result<String, Box<dyn std::error::Error>> {
+    let cursor = Cursor::new(data);
+    let options = ipfs_api_backend_hyper::request::Add {
+        hash: Some("keccak-256".into()),
+        cid_version: Some(1),
+        ..Default::default()
+    };
+    let add = ipfs.add_with_options(cursor, options).await?;
+    Ok(add.hash)
+}
+
 async fn generate_nft_metadata(
     client: &hyper::Client<hyper::client::HttpConnector>,
     server_addr: &str,
     ipfs_hash: &str,
-    image_hash: [u8; 32],
     num_penguins: usize,
     sky_theme: &SkyTheme,
     penguins: &[Penguin],
@@ -474,10 +488,6 @@ async fn generate_nft_metadata(
                     SkyTheme::Aurora => "Aurora"
                 }
             },
-            {
-                "trait_type": "Image Hash",
-                "value": format!("0x{}", hex::encode(image_hash))
-            }
         ]
     });
 
@@ -489,14 +499,126 @@ async fn generate_nft_metadata(
     // Convert metadata to bytes
     let metadata_bytes = metadata.to_string().into_bytes();
     
-    // Upload metadata to IPFS
+    // Upload metadata to IPFS with keccak-256 and CIDv1
     let ipfs = IpfsClient::default();
-    let cursor = Cursor::new(metadata_bytes);
-    let res = ipfs.add(cursor).await?;
-    println!("Metadata uploaded to IPFS with hash: {}", res.hash);
-    println!("You can view metadata at: http://localhost:8080/ipfs/{}", res.hash);
+    let metadata_hash = ipfs_add_with_keccak(&ipfs, metadata_bytes).await?;
+    println!("Metadata uploaded to IPFS with hash: {}", metadata_hash);
+    println!("You can view metadata at: http://localhost:8080/ipfs/{}", metadata_hash);
     
-    Ok(res.hash)
+    Ok(metadata_hash)
+}
+
+async fn get_ipfs_refs(ipfs: &IpfsClient, hash: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    // Create HTTP client
+    let client = hyper::Client::new();
+    
+    // Build request to IPFS refs API with recursive flag
+    let request = hyper::Request::builder()
+        .method(hyper::Method::POST)
+        .uri(format!("http://localhost:5001/api/v0/refs?arg={}&recursive=true", hash))
+        .body(hyper::Body::empty())?;
+
+    // Make request and get response
+    let response = client.request(request).await?;
+    let body = hyper::body::to_bytes(response).await?;
+    let body_str = String::from_utf8(body.to_vec())?;
+
+    // Parse response and collect unique refs
+    let mut unique_refs = std::collections::HashSet::new();
+    for line in body_str.lines() {
+        if let Ok(ref_obj) = serde_json::from_str::<serde_json::Value>(line) {
+            if let Some(ref_str) = ref_obj["Ref"].as_str() {
+                unique_refs.insert(ref_str.to_string());
+            }
+        }
+    }
+
+    // Convert HashSet to Vec, starting with the original hash
+    let mut result = vec![hash.to_string()];
+    result.extend(unique_refs.into_iter());
+    Ok(result)
+}
+
+async fn get_ipfs_block(client: &hyper::Client<hyper::client::HttpConnector>, cid: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let request = hyper::Request::builder()
+        .method(hyper::Method::POST)
+        .uri(format!("http://localhost:5001/api/v0/block/get?arg={}", cid))
+        .body(hyper::Body::empty())?;
+
+    let response = client.request(request).await?;
+    let body = hyper::body::to_bytes(response).await?;
+    Ok(body.to_vec())
+}
+
+fn verify_keccak_cid(cid_str: &str) -> Result<bool, Box<dyn std::error::Error>> {
+    let cid = Cid::try_from(cid_str)?;
+    let mh = cid.hash();
+    Ok(mh.code() == Code::Keccak256 as u64)
+}
+
+async fn process_ipfs_blocks(
+    client: &hyper::Client<hyper::client::HttpConnector>,
+    server_addr: &str,
+    ipfs_blocks: &[String],
+) -> Result<Vec<[u8; 32]>, Box<dyn std::error::Error>> {
+    let mut block_hashes = Vec::new();
+    
+    for block_cid in ipfs_blocks {
+        // Verify CID uses keccak-256
+        if !verify_keccak_cid(block_cid)? {
+            return Err("Block CID does not use keccak-256 multihash".into());
+        }
+        
+        // Get block data
+        let block_data = get_ipfs_block(client, block_cid).await?;
+        
+        // Calculate and emit keccak256 hash
+        let hash = emit_image_keccak256(client, server_addr, block_data).await?;
+        block_hashes.push(hash);
+    }
+    
+    Ok(block_hashes)
+}
+
+async fn emit_abi_encoded_notice(
+    client: &hyper::Client<hyper::client::HttpConnector>,
+    server_addr: &str,
+    metadata_cid: &str,
+    ipfs_blocks: &[String],
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Process all IPFS blocks
+    let block_hashes = process_ipfs_blocks(client, server_addr, ipfs_blocks).await?;
+    
+    // CBOR encode the IPFS block references and their hashes
+    let mut cbor_data = Vec::new();
+    let block_data: Vec<(&str, &[u8])> = ipfs_blocks.iter()
+        .zip(block_hashes.iter())
+        .map(|(cid, hash)| (cid.as_str(), hash.as_slice()))
+        .collect();
+    ciborium::ser::into_writer(&block_data, &mut cbor_data)?;
+    
+    let hash = emit_image_keccak256(client, server_addr, cbor_data).await?;   
+    // Create tokens for ABI encoding with hash
+    let tokens = vec![
+        Token::String(metadata_cid.to_string()),
+        Token::FixedBytes(hash.to_vec()),
+    ];
+    
+    // Encode the tokens
+    let encoded = encode(&tokens);
+    
+    // Create and emit notice
+    let hex_string = format!("0x{}", hex::encode(&encoded));
+    let notice = object! { "payload" => hex_string };
+    let notice_request = hyper::Request::builder()
+        .method(hyper::Method::POST)
+        .uri(format!("{}/notice", server_addr))
+        .header("Content-Type", "application/json")
+        .body(hyper::Body::from(notice.dump()))?;
+
+    let _response = client.request(notice_request).await?;
+    println!("ABI encoded notice emitted successfully");
+    Ok(())
 }
 
 pub async fn generate_penguin_gif(
@@ -601,29 +723,30 @@ pub async fn generate_penguin_gif(
     println!("Uploading to IPFS...");
     let data = std::fs::read(gif_path)?;
     
-    // Calculate image hash and emit GIO
-    let image_hash = emit_image_keccak256(client, server_addr, data.clone()).await?;
+    // Upload to IPFS with keccak-256 and CIDv1
+    let res_hash = ipfs_add_with_keccak(&ipfs, data.clone()).await?;
+    println!("Image uploaded to IPFS with hash: {}", res_hash);
+    println!("You can view image at: http://localhost:8080/ipfs/{}", res_hash);
     
-    // Upload to IPFS
-    let cursor = Cursor::new(data);
-    let res = ipfs.add(cursor).await?;
-    println!("Image uploaded to IPFS with hash: {}", res.hash);
-    println!("You can view image at: http://localhost:8080/ipfs/{}", res.hash);
+    // Get IPFS block references
+    let ipfs_blocks = get_ipfs_refs(&ipfs, &res_hash).await?;
     
     // Generate and upload NFT metadata to IPFS
     let metadata_hash = generate_nft_metadata(
         client, 
         server_addr, 
-        &res.hash, 
-        image_hash,
+        &res_hash, 
         num_penguins,
         &sky_theme,
         &penguins
     ).await?;
     
-    // Emit both image and metadata hashes as notice
-    let hashes = format!("Image: {}\nMetadata: {}", res.hash, metadata_hash);
-    emit_notice(client, server_addr, hashes.as_bytes().to_vec()).await?;
+    // Emit ABI encoded notice with metadata CID and image hash
+    emit_abi_encoded_notice(client, server_addr, &metadata_hash, &ipfs_blocks).await?;
+    
+    // Also emit the regular hashes notice for logging
+    let hashes = format!("Image: {}\nMetadata: {}", res_hash, metadata_hash);
+    println!("{}", hashes);
     
     Ok(())
 }
