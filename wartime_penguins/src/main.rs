@@ -503,7 +503,7 @@ async fn generate_nft_metadata(
     let ipfs = IpfsClient::default();
     let metadata_hash = ipfs_add_with_keccak(&ipfs, metadata_bytes).await?;
     println!("Metadata uploaded to IPFS with hash: {}", metadata_hash);
-    println!("You can view metadata at: http://localhost:8080/ipfs/{}", metadata_hash);
+    println!("You can view metadata at: http://127.0.0.1:8080/ipfs/{}", metadata_hash);
     
     Ok(metadata_hash)
 }
@@ -515,7 +515,7 @@ async fn get_ipfs_refs(ipfs: &IpfsClient, hash: &str) -> Result<Vec<String>, Box
     // Build request to IPFS refs API with recursive flag
     let request = hyper::Request::builder()
         .method(hyper::Method::POST)
-        .uri(format!("http://localhost:5001/api/v0/refs?arg={}&recursive=true", hash))
+        .uri(format!("http://127.0.0.1:5001/api/v0/refs?arg={}&recursive=true", hash))
         .body(hyper::Body::empty())?;
 
     // Make request and get response
@@ -542,7 +542,7 @@ async fn get_ipfs_refs(ipfs: &IpfsClient, hash: &str) -> Result<Vec<String>, Box
 async fn get_ipfs_block(client: &hyper::Client<hyper::client::HttpConnector>, cid: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let request = hyper::Request::builder()
         .method(hyper::Method::POST)
-        .uri(format!("http://localhost:5001/api/v0/block/get?arg={}", cid))
+        .uri(format!("http://127.0.0.1:5001/api/v0/block/get?arg={}", cid))
         .body(hyper::Body::empty())?;
 
     let response = client.request(request).await?;
@@ -723,7 +723,7 @@ pub async fn generate_penguin_gif(
     // Upload to IPFS with keccak-256 and CIDv1
     let res_hash = ipfs_add_with_keccak(&ipfs, data.clone()).await?;
     println!("Image uploaded to IPFS with hash: {}", res_hash);
-    println!("You can view image at: http://localhost:8080/ipfs/{}", res_hash);
+    println!("You can view image at: http://127.0.0.1:8080/ipfs/{}", res_hash);
     
     // Get IPFS block references
     let ipfs_blocks = get_ipfs_refs(&ipfs, &res_hash).await?;
