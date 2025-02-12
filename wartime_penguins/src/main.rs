@@ -9,6 +9,11 @@ use std::collections::HashMap;
 use json::{object, JsonValue};
 use std::env;
 use hyper::Client;
+use ipfs_api_backend_hyper::{IpfsApi, IpfsClient};
+use std::io::Cursor;
+use hex;
+use tiny_keccak::{Hasher, Keccak};
+use serde_json::json;
 
 const WIDTH: u32 = 1200;
 const HEIGHT: u32 = 800;
@@ -365,7 +370,139 @@ fn create_frame(img: &RgbImage) -> Frame<'static> {
     }
 }
 
-pub fn generate_penguin_gif() -> Result<(), Box<dyn std::error::Error>> {
+// Add this helper function to convert RGB to hex color string
+fn rgb_to_hex(color: &Rgb<u8>) -> String {
+    format!("#{:02x}{:02x}{:02x}", color[0], color[1], color[2])
+}
+
+async fn emit_notice(
+    client: &hyper::Client<hyper::client::HttpConnector>,
+    server_addr: &str,
+    data: Vec<u8>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let hex_string = format!("0x{}", hex::encode(&data));
+    let notice = object! { "payload" => hex_string };
+    let notice_request = hyper::Request::builder()
+        .method(hyper::Method::POST)
+        .uri(format!("{}/notice", server_addr))
+        .header("Content-Type", "application/json")
+        .body(hyper::Body::from(notice.dump()))?;
+
+    let _response = client.request(notice_request).await?;
+    Ok(())
+}
+
+async fn emit_image_keccak256(
+    client: &hyper::Client<hyper::client::HttpConnector>,
+    server_addr: &str,
+    data: Vec<u8>,
+) -> Result<[u8; 32], Box<dyn std::error::Error>> {
+    // Calculate Keccak-256 hash
+    let mut keccak = Keccak::v256();
+    let mut hash = [0u8; 32];
+    keccak.update(&data);
+    keccak.finalize(&mut hash);
+
+    // Create GIO payload
+    let hex_data = format!("0x{}", hex::encode(&data));
+    let gio = object! {
+        "domain" => 0x2c,
+        "id" => hex_data
+    };
+
+    // Send GIO request
+    let gio_request = hyper::Request::builder()
+        .method(hyper::Method::POST)
+        .uri(format!("{}/gio", server_addr))
+        .header("Content-Type", "application/json")
+        .body(hyper::Body::from(gio.dump()))?;
+
+    let response = client.request(gio_request).await?;
+    
+    if response.status() == hyper::StatusCode::ACCEPTED {
+        println!("Image Keccak256 GIO emitted successfully");
+    } else {
+        eprintln!("Failed to emit Image Keccak256 GIO. Status: {}", response.status());
+    }
+
+    Ok(hash)
+}
+
+async fn generate_nft_metadata(
+    client: &hyper::Client<hyper::client::HttpConnector>,
+    server_addr: &str,
+    ipfs_hash: &str,
+    image_hash: [u8; 32],
+    num_penguins: usize,
+    sky_theme: &SkyTheme,
+    penguins: &[Penguin],
+) -> Result<String, Box<dyn std::error::Error>> {
+    // Create attributes for each penguin
+    let mut penguin_attributes = Vec::new();
+    for (i, penguin) in penguins.iter().enumerate() {
+        penguin_attributes.push(json!({
+            "trait_type": format!("Penguin {} Color", i + 1),
+            "value": rgb_to_hex(&penguin.color)
+        }));
+        penguin_attributes.push(json!({
+            "trait_type": format!("Penguin {} Size", i + 1),
+            "value": penguin.size
+        }));
+        penguin_attributes.push(json!({
+            "trait_type": format!("Penguin {} Knife Hand", i + 1),
+            "value": if penguin.knife_hand { "Right" } else { "Left" }
+        }));
+    }
+
+    // Create the metadata JSON with all attributes
+    let mut metadata = json!({
+        "name": format!("{} Wartime Penguin(s)", num_penguins),
+        "description": "Penguin warrior in a snowy battlefield",
+        "image": format!("ipfs://{}", ipfs_hash),
+        "attributes": [
+            {
+                "trait_type": "Number of Penguins",
+                "value": num_penguins
+            },
+            {
+                "trait_type": "Sky Theme",
+                "value": match sky_theme {
+                    SkyTheme::Day => "Day",
+                    SkyTheme::Dawn => "Dawn",
+                    SkyTheme::Dusk => "Dusk",
+                    SkyTheme::Night => "Night",
+                    SkyTheme::Aurora => "Aurora"
+                }
+            },
+            {
+                "trait_type": "Image Hash",
+                "value": format!("0x{}", hex::encode(image_hash))
+            }
+        ]
+    });
+
+    // Add penguin-specific attributes
+    if let Some(attributes) = metadata["attributes"].as_array_mut() {
+        attributes.extend(penguin_attributes);
+    }
+
+    // Convert metadata to bytes
+    let metadata_bytes = metadata.to_string().into_bytes();
+    
+    // Upload metadata to IPFS
+    let ipfs = IpfsClient::default();
+    let cursor = Cursor::new(metadata_bytes);
+    let res = ipfs.add(cursor).await?;
+    println!("Metadata uploaded to IPFS with hash: {}", res.hash);
+    println!("You can view metadata at: http://localhost:8080/ipfs/{}", res.hash);
+    
+    Ok(res.hash)
+}
+
+pub async fn generate_penguin_gif(
+    client: &hyper::Client<hyper::client::HttpConnector>,
+    server_addr: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     // Setup GIF encoder with global color table
     let mut image_file = File::create("/tmp/penguin_rush.gif")?;
     let mut encoder = Encoder::new(&mut image_file, WIDTH as u16, HEIGHT as u16, &[])?;
@@ -456,17 +593,49 @@ pub fn generate_penguin_gif() -> Result<(), Box<dyn std::error::Error>> {
         // Add frame to GIF
         encoder.write_frame(&create_frame(&img)).unwrap();
     }
+
+    // After writing the GIF file, upload it to IPFS
+    let ipfs = IpfsClient::default();
+    let gif_path = "/tmp/penguin_rush.gif";
+    
+    println!("Uploading to IPFS...");
+    let data = std::fs::read(gif_path)?;
+    
+    // Calculate image hash and emit GIO
+    let image_hash = emit_image_keccak256(client, server_addr, data.clone()).await?;
+    
+    // Upload to IPFS
+    let cursor = Cursor::new(data);
+    let res = ipfs.add(cursor).await?;
+    println!("Image uploaded to IPFS with hash: {}", res.hash);
+    println!("You can view image at: http://localhost:8080/ipfs/{}", res.hash);
+    
+    // Generate and upload NFT metadata to IPFS
+    let metadata_hash = generate_nft_metadata(
+        client, 
+        server_addr, 
+        &res.hash, 
+        image_hash,
+        num_penguins,
+        &sky_theme,
+        &penguins
+    ).await?;
+    
+    // Emit both image and metadata hashes as notice
+    let hashes = format!("Image: {}\nMetadata: {}", res.hash, metadata_hash);
+    emit_notice(client, server_addr, hashes.as_bytes().to_vec()).await?;
+    
     Ok(())
 }
 
 pub async fn handle_advance(
-    _client: &hyper::Client<hyper::client::HttpConnector>,
-    _server_addr: &str,
+    client: &hyper::Client<hyper::client::HttpConnector>,
+    server_addr: &str,
     request: JsonValue,
 ) -> Result<&'static str, Box<dyn std::error::Error>> {
     println!("Received advance request data {}", &request);
     let _payload = request["data"]["payload"].as_str().ok_or("Missing payload")?;
-    generate_penguin_gif()?;
+    generate_penguin_gif(client, server_addr).await?;
     Ok("accept")
 }
 
