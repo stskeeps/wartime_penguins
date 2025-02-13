@@ -553,6 +553,8 @@ async fn get_ipfs_block(client: &hyper::Client<hyper::client::HttpConnector>, ci
 fn verify_keccak_cid(cid_str: &str) -> Result<bool, Box<dyn std::error::Error>> {
     let cid = Cid::try_from(cid_str)?;
     let mh = cid.hash();
+    println!("CID: {:?}", cid);
+    println!("MH: {:?} {:?}", mh.code(), Code::Keccak256 as u64);   
     Ok(mh.code() == Code::Keccak256 as u64)
 }
 
