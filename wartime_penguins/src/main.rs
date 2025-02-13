@@ -540,6 +540,7 @@ async fn get_ipfs_refs(ipfs: &IpfsClient, hash: &str) -> Result<Vec<String>, Box
 }
 
 async fn get_ipfs_block(client: &hyper::Client<hyper::client::HttpConnector>, cid: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    println!("Getting IPFS block {:?}", cid);
     let request = hyper::Request::builder()
         .method(hyper::Method::POST)
         .uri(format!("http://127.0.0.1:5001/api/v0/block/get?arg={}", cid))
@@ -547,6 +548,7 @@ async fn get_ipfs_block(client: &hyper::Client<hyper::client::HttpConnector>, ci
 
     let response = client.request(request).await?;
     let body = hyper::body::to_bytes(response).await?;
+    println!("Done getting IPFS block {:?}", cid);
     Ok(body.to_vec())
 }
 
@@ -741,7 +743,7 @@ pub async fn generate_penguin_gif(
     ).await?;
     
     // Emit ABI encoded notice with metadata CID and image hash
-    emit_abi_encoded_notice(client, server_addr, &metadata_hash, &ipfs_blocks).await?;
+    emit_abi_encoded_notice(client, server_addr, &metadata_hash, &ipfs_blocks).await.unwrap();
     
     // Also emit the regular hashes notice for logging
     let hashes = format!("Image: {}\nMetadata: {}", res_hash, metadata_hash);
