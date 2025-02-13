@@ -554,8 +554,8 @@ fn verify_keccak_cid(cid_str: &str) -> Result<bool, Box<dyn std::error::Error>> 
     let cid = Cid::try_from(cid_str)?;
     let mh = cid.hash();
     println!("CID: {:?}", cid);
-    println!("MH: {:?} {:?}", mh.code(), Code::Keccak256 as u64);   
-    Ok(mh.code() == Code::Keccak256 as u64)
+    println!("MH: {:?}", mh.code());   
+    Ok(mh.code() == 0x1b)
 }
 
 async fn process_ipfs_blocks(
