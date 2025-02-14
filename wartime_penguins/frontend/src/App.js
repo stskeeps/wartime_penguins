@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ethers } from "ethers";
 import { Buffer } from "buffer";
+import cbor from "cbor-js";
 import './App.css';
 
 function App() {
@@ -44,7 +45,6 @@ function App() {
 
       const machineHash = "a24850cd105dd8e24fc827e2295198a111ae19cbc0042b2664607a50b2148450";
       const fixedAddress = "0xA44151489861Fe9e3055d95adC98FbD462B948e7";
-
       const endpoint = "http://localhost:3001/issue_task";
       console.log("Proxy Endpoint:", endpoint);
       setOutput("Sending request...");
@@ -63,6 +63,7 @@ function App() {
         const errorText = await response.text();
         throw new Error(`Request failed: ${errorText}`);
       }
+
       const data = await response.json();
       console.log("Response:", data);
       let finalOutput = JSON.stringify(data, null, 2);
@@ -72,26 +73,47 @@ function App() {
         const digestKey = Object.keys(secondResponse)[0];
         const noticeArray = secondResponse[digestKey][0][1];
         const fullBuffer = Buffer.from(noticeArray);
-        console.log("Full Notice Buffer (hex):", fullBuffer.toString("hex"));
-        finalOutput += "\n\nFull Notice Buffer (hex): " + fullBuffer.toString("hex");
+        const calldata = "0x" + fullBuffer.toString("hex");
+        console.log("Full Notice Call (calldata):", calldata);
+        finalOutput += "\n\nFull Notice Call (calldata): " + calldata;
 
-        const payloadBuffer = fullBuffer.slice(4);
-        const payloadHex = "0x" + payloadBuffer.toString("hex");
-        console.log("Payload Hex for decoding:", payloadHex);
+        const iface = new ethers.utils.Interface(["function Notice(bytes data)"]);
+        const decodedCall = iface.decodeFunctionData("Notice", calldata);
+        console.log("Decoded Call:", decodedCall);
+        const innerPayload = decodedCall.data;
+        finalOutput += "\n\nPayload (hex): " + innerPayload;
 
-        let decoded;
-        try {
-          decoded = ethers.utils.defaultAbiCoder.decode(
-            ["string", "bytes32"],
-            payloadHex
-          );
-        } catch (e) {
-          throw new Error("Decoding failed: " + e.message);
-        }
+        const decodedInner = ethers.utils.defaultAbiCoder.decode(
+          ["string", "bytes32"],
+          innerPayload
+        );
+        console.log("Decoded Inner:", decodedInner);
         finalOutput += "\n\nDecoded Notice Payload:";
-        finalOutput += "\n  String: " + decoded[0];
-        finalOutput += "\n  Bytes32: " + decoded[1].toString();
-        console.log("Decoded Notice Payload:", decoded);
+        finalOutput += "\n  String: " + decodedInner[0];
+        finalOutput += "\n  Bytes32: " + decodedInner[1].toString();
+
+        const bytes32Value = decodedInner[1].toString();
+        const bytes32No0x = bytes32Value.slice(2);
+        console.log("Bytes32 (without 0x):", bytes32No0x);
+
+        const solverEndpoint = `http://localhost:3001/get_preimage/2/${bytes32No0x}`;
+        console.log("Solver Endpoint:", solverEndpoint);
+        finalOutput += "\n\nSolver Endpoint: " + solverEndpoint;
+
+        const preimageResponse = await fetch(solverEndpoint);
+        if (!preimageResponse.ok) {
+          const errText = await preimageResponse.text();
+          throw new Error("Solver preimage request failed: " + errText);
+        }
+
+        const preimageArrayBuffer = await preimageResponse.arrayBuffer();
+        const preimageBuffer = Buffer.from(preimageArrayBuffer);
+        console.log("Preimage Buffer (hex):", preimageBuffer.toString("hex"));
+        finalOutput += "\n\nPreimage Buffer (hex): " + preimageBuffer.toString("hex");
+
+        const decodedPreimage = cbor.decode(preimageBuffer);
+        console.log("Decoded Preimage (CBOR):", decodedPreimage);
+        finalOutput += "\n\nDecoded Preimage (CBOR): " + JSON.stringify(decodedPreimage, null, 2);
       }
 
       setOutput(finalOutput);

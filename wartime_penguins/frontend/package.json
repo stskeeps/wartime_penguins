@@ -5,6 +5,7 @@
   "type": "module",
   "dependencies": {
     "buffer": "^6.0.3",
+    "cbor-js": "^0.1.0",
     "cra-template": "1.2.0",
     "ethers": "^5.7.2",
     "express": "^4.21.2",
