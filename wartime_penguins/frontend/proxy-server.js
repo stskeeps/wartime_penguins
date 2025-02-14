@@ -24,6 +24,24 @@ app.post('/issue_task', async (req, res) => {
   }
 });
 
+app.get('/get_preimage/2/:bytes32', async (req, res) => {
+    const { bytes32 } = req.params;
+    try {
+      const solverUrl = `https://cartesi-coprocessor-solver-prod.fly.dev/get_preimage/2/${bytes32}`;
+      const response = await fetch(solverUrl);
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(errText);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      res.set('Content-Type', 'application/octet-stream');
+      res.send(Buffer.from(arrayBuffer));
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
 app.listen(PORT, () => {
   console.log(`Proxy server listening on port ${PORT}`);
 });
