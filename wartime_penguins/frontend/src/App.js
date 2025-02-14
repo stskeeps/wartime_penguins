@@ -154,8 +154,9 @@ function App() {
 
       if (noticeString) {
         const noticeCID = CID.parse(noticeString);
+        console.log("Notice CID:", noticeCID);
         const { writer, out } = await CarWriter.create([noticeCID]);
-        const carBlob = await carWriterOutToBlob(out);
+        const carBlob = carWriterOutToBlob(out);
         await car(helia).export(noticeCID, writer);
         console.log(await carBlob);
         // await writer.put({ noticeCID, bytes: noticeBuffer });
@@ -164,8 +165,8 @@ function App() {
         // for await (const chunk of out) {
         //   chunks.push(chunk);
         // }
-        console.log("Notice CID:", noticeCID);
-        finalOutput += "\n\nNotice CAR Blob: " + (await carBlob);
+
+        finalOutput += "\n\nNotice CAR Blob: " + carBlob;
       }
 
       setOutput(finalOutput);
