@@ -160,13 +160,12 @@ function App() {
         console.log(await carBlob);
         // await writer.put({ noticeCID, bytes: noticeBuffer });
         // await writer.close();
-        const chunks = [];
-        for await (const chunk of out) {
-          chunks.push(chunk);
-        }
-        const noticeCarBuffer = Buffer.concat(chunks);
-        console.log("Notice CAR file:", noticeCarBuffer.toString("hex"));
-        finalOutput += "\n\nNotice CAR file: " + noticeCarBuffer.toString("hex");
+        // const chunks = [];
+        // for await (const chunk of out) {
+        //   chunks.push(chunk);
+        // }
+        console.log("Notice CID:", noticeCID);
+        finalOutput += "\n\nNotice CAR Blob: " + (await carBlob);
       }
 
       setOutput(finalOutput);
