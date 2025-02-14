@@ -656,7 +656,7 @@ async fn ipfs_files_write(ipfs: &IpfsClient, path: &str, data: Vec<u8>) -> Resul
     
     // Force CIDv1 and keccak-256 on the MFS path
     let options = ipfs_api_backend_hyper::request::FilesChcid {
-        path: path.into(),
+        path: "/nft".into(),
         hash: Some("keccak-256".into()),
         cid_version: Some(1),
         ..Default::default()
