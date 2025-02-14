@@ -47,7 +47,7 @@ function App() {
       );
       console.log("Encoded Input:", encodedInput);
 
-      const machineHash = "a24850cd105dd8e24fc827e2295198a111ae19cbc0042b2664607a50b2148450";
+      const machineHash = "e33405834bb3bd002e08d68ffb0f5748fb682ad2c0bda78edeea6506b74374f5";
       const fixedAddress = "0xA44151489861Fe9e3055d95adC98FbD462B948e7";
       const endpoint = "http://localhost:3001/issue_task";
       console.log("Proxy Endpoint:", endpoint);
