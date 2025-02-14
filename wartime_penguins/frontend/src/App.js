@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ethers } from "ethers";
 import { Buffer } from "buffer";
-import cbor from "cbor-js";
+import { decode as cborDecode } from 'cbor2';
 import './App.css';
 
 function App() {
@@ -111,7 +111,7 @@ function App() {
         console.log("Preimage Buffer (hex):", preimageBuffer.toString("hex"));
         finalOutput += "\n\nPreimage Buffer (hex): " + preimageBuffer.toString("hex");
 
-        const decodedPreimage = cbor.decode(preimageBuffer);
+        const decodedPreimage = cborDecode(preimageBuffer);
         console.log("Decoded Preimage (CBOR):", decodedPreimage);
         finalOutput += "\n\nDecoded Preimage (CBOR): " + JSON.stringify(decodedPreimage, null, 2);
       }
