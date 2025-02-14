@@ -6,7 +6,16 @@ import { createHelia } from 'helia';
 import { CID } from 'multiformats/cid';
 import { sha256 } from 'multiformats/hashes/sha2';
 import { CarWriter } from '@ipld/car/writer';
+import { car } from '@helia/car'
 import './App.css';
+
+async function carWriterOutToBlob (carReaderIterable) {
+    const parts = []
+    for await (const part of carReaderIterable) {
+      parts.push(part)
+    }
+    return new Blob(parts, { type: 'application/car' })
+  }
 
 function App() {
   const [walletAddress, setWalletAddress] = useState("");
@@ -145,6 +154,9 @@ function App() {
         const noticeBuffer = Buffer.from(noticeString, 'utf8');
         const noticeCID = CID.parse(decodedInner[1].toString());
         const { writer, out } = await CarWriter.create([noticeCID]);
+        const carBlob = await carWriterOutToBlob(out);
+        await car(helia).export(noticeCID, writer);
+        console.log(await carBlob);
         await writer.put({ noticeCID, bytes: noticeBuffer });
         await writer.close();
         const chunks = [];
