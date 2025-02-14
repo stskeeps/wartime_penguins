@@ -6,7 +6,16 @@ import { createHelia } from 'helia';
 import { CID } from 'multiformats/cid';
 import { sha256 } from 'multiformats/hashes/sha2';
 import { CarWriter } from '@ipld/car/writer';
+import { car } from '@helia/car'
 import './App.css';
+
+async function carWriterOutToBlob (carReaderIterable) {
+    const parts = []
+    for await (const part of carReaderIterable) {
+      parts.push(part)
+    }
+    return new Blob(parts, { type: 'application/car' })
+  }
 
 function App() {
   const [walletAddress, setWalletAddress] = useState("");
@@ -47,7 +56,7 @@ function App() {
       );
       console.log("Encoded Input:", encodedInput);
 
-      const machineHash = "a24850cd105dd8e24fc827e2295198a111ae19cbc0042b2664607a50b2148450";
+      const machineHash = "e33405834bb3bd002e08d68ffb0f5748fb682ad2c0bda78edeea6506b74374f5";
       const fixedAddress = "0xA44151489861Fe9e3055d95adC98FbD462B948e7";
       const endpoint = "http://localhost:3001/issue_task";
       console.log("Proxy Endpoint:", endpoint);
@@ -120,7 +129,9 @@ function App() {
       console.log("Decoded Preimage (CBOR):", decodedPreimage);
       finalOutput += "\n\nDecoded Preimage (CBOR): " + JSON.stringify(decodedPreimage, null, 2);
 
-      const helia = await createHelia();
+      const helia = await createHelia({
+        start: false
+      });
       console.log("Helia Node Initialized:", helia);
       finalOutput += "\n\nHelia Node Initialized: Peer ID: " + helia.libp2p.peerId.toString();
 
@@ -142,18 +153,21 @@ function App() {
         finalOutput += "\n\nCAR Files Count: " + carFiles.length;
 
       if (noticeString) {
-        const noticeBuffer = Buffer.from(noticeString, 'utf8');
-        const noticeCID = CID.parse(decodedInner[1].toString());
+        const noticeCID = CID.parse(noticeString);
+        console.log("Notice CID:", noticeCID);
+        console.log("Notice CID string:", noticeCID.toString());
         const { writer, out } = await CarWriter.create([noticeCID]);
-        await writer.put({ noticeCID, bytes: noticeBuffer });
-        await writer.close();
-        const chunks = [];
-        for await (const chunk of out) {
-          chunks.push(chunk);
-        }
-        const noticeCarBuffer = Buffer.concat(chunks);
-        console.log("Notice CAR file:", noticeCarBuffer.toString("hex"));
-        finalOutput += "\n\nNotice CAR file: " + noticeCarBuffer.toString("hex");
+        const carBlob = carWriterOutToBlob(out);
+        await car(helia).export(noticeCID, writer);
+        console.log(await carBlob);
+        // await writer.put({ noticeCID, bytes: noticeBuffer });
+        // await writer.close();
+        // const chunks = [];
+        // for await (const chunk of out) {
+        //   chunks.push(chunk);
+        // }
+
+        finalOutput += "\n\nNotice CAR Blob: " + carBlob;
       }
 
       setOutput(finalOutput);

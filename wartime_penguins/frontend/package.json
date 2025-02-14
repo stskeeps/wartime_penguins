@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@helia/car": "^4.0.2",
     "@ipld/car": "^5.4.0",
     "buffer": "^6.0.3",
     "cbor-js": "^0.1.0",
