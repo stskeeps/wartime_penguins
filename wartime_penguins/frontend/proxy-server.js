@@ -15,8 +15,8 @@ app.post('/issue_task', async (req, res) => {
       `https://cartesi-coprocessor-solver-prod.fly.dev/issue_task/${machineHash}/${fixedAddress}`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input })
+        headers: { "Content-Type": "application/octet-stream" },
+        body: Buffer.from(input.slice(2), "hex")
       }
     );
     const data = await response.json();
