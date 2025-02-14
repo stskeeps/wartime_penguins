@@ -7,6 +7,8 @@ import { CID } from 'multiformats/cid';
 import { sha256 } from 'multiformats/hashes/sha2';
 import { CarWriter } from '@ipld/car/writer';
 import { car } from '@helia/car'
+import { unixfs } from '@helia/unixfs'
+
 import './App.css';
 
 async function carWriterOutToBlob (carReaderIterable) {
@@ -140,8 +142,16 @@ function App() {
           for (const [index, entry] of decodedPreimage.entries()) {
             const cidText = entry[0];
             const blockArray = entry[1];
-            const blockBuffer = Buffer.from(blockArray);
+            const blockHash = Buffer.from(blockArray);
             const cid = CID.parse(cidText);
+            const solverEndpoint = `http://localhost:3001/get_preimage/2/${blockHash.toString("hex")}`;
+      
+            const preimageResponse = await fetch(solverEndpoint);
+            if (!preimageResponse.ok) {
+              const errText = await preimageResponse.text();
+              throw new Error("Solver preimage request failed: " + errText);
+            }
+            const blockBuffer = await preimageResponse.arrayBuffer();
             await helia.blockstore.put(cid, blockBuffer);
             console.log(`Stored block ${index} with CID:`, cid.toString());
             finalOutput += `\nStored block ${index} with CID: ${cid.toString()}`;
@@ -156,6 +166,10 @@ function App() {
         const noticeCID = CID.parse(noticeString);
         console.log("Notice CID:", noticeCID);
         console.log("Notice CID string:", noticeCID.toString());
+        const fs = unixfs(helia);
+        for await (const entry of fs.ls(noticeCID)) {
+          console.info(entry)
+        }
         const { writer, out } = await CarWriter.create([noticeCID]);
         const carBlob = carWriterOutToBlob(out);
         await car(helia).export(noticeCID, writer);

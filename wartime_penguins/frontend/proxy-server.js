@@ -1,10 +1,12 @@
 // proxy-server.js
 import express from 'express';
 import fetch from 'node-fetch';
+import cors from 'cors';
 const app = express();
 const PORT = 3001;
 
 app.use(express.json());
+app.use(cors());
 
 app.post('/issue_task', async (req, res) => {
   const { machineHash, fixedAddress, input } = req.body;
