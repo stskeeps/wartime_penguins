@@ -152,7 +152,7 @@ function App() {
               throw new Error("Solver preimage request failed: " + errText);
             }
             const blockBuffer = await preimageResponse.arrayBuffer();
-            await helia.blockstore.put(cid, blockBuffer);
+            await helia.blockstore.put(cid, new Uint8Array(blockBuffer));
             console.log(`Stored block ${index} with CID:`, cid.toString());
             finalOutput += `\nStored block ${index} with CID: ${cid.toString()}`;
           }
