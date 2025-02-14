@@ -72,6 +72,7 @@ function App() {
 
       let noticeString = "";
       let bytes32Value = "";
+      let decodedInner = [];
 
       if (data.service_response && data.service_response[1]) {
         const secondResponse = data.service_response[1];
@@ -86,8 +87,7 @@ function App() {
         console.log("Decoded Notice Call:", decodedCall);
         const innerPayload = decodedCall.data;
         finalOutput += "\n\nInner Payload (hex): " + innerPayload;
-
-        const decodedInner = ethers.utils.defaultAbiCoder.decode(
+        decodedInner = ethers.utils.defaultAbiCoder.decode(
           ["string", "bytes32"],
           innerPayload
         );
@@ -125,39 +125,38 @@ function App() {
       finalOutput += "\n\nHelia Node Initialized: Peer ID: " + helia.libp2p.peerId.toString();
 
       let carFiles = [];
-      if (Array.isArray(decodedPreimage)) {
-        for (const [index, item] of decodedPreimage.entries()) {
-          const itemBuffer = Buffer.from(item, 'utf8');
-          const hash = await sha256.digest(itemBuffer);
-          const cid = CID.create(1, 0x55, hash);
-          await helia.blockstore.put(cid, itemBuffer);
-          console.log(`Stored block ${index} with CID:`, cid.toString());
-          finalOutput += `\nStored block ${index} with CID: ${cid.toString()}`;
-
-          const { writer, out } = await CarWriter.create([cid]);
-          await writer.put({ cid, bytes: itemBuffer });
-          await writer.close();
-          const chunks = [];
-          for await (const chunk of out) {
-            chunks.push(chunk);
+        if (Array.isArray(decodedPreimage)) {
+          for (const [index, entry] of decodedPreimage.entries()) {
+            const cidText = entry[0];
+            const blockArray = entry[1];
+            const blockBuffer = Buffer.from(blockArray);
+            const cid = CID.parse(cidText);
+            await helia.blockstore.put(cid, blockBuffer);
+            console.log(`Stored block ${index} with CID:`, cid.toString());
+            finalOutput += `\nStored block ${index} with CID: ${cid.toString()}`;
+            const { writer, out } = await CarWriter.create([cid]);
+            await writer.put({ cid, bytes: blockBuffer });
+            await writer.close();
+            const chunks = [];
+            for await (const chunk of out) {
+              chunks.push(chunk);
+            }
+            const carFileBuffer = Buffer.concat(chunks);
+            console.log(`CAR file for block ${index}:`, carFileBuffer.toString("hex"));
+            finalOutput += `\nCAR file for block ${index}: ${carFileBuffer.toString("hex")}`;
+            carFiles.push(carFileBuffer);
           }
-          const carFileBuffer = Buffer.concat(chunks);
-          console.log(`CAR file for block ${index}:`, carFileBuffer.toString("hex"));
-          finalOutput += `\nCAR file for block ${index}: ${carFileBuffer.toString("hex")}`;
-          carFiles.push(carFileBuffer);
+        } else {
+          console.warn("Decoded preimage is not an array");
+          finalOutput += "\nDecoded preimage is not an array.";
         }
-      } else {
-        console.warn("Decoded preimage is not an array");
-        finalOutput += "\nDecoded preimage is not an array.";
-      }
-      finalOutput += "\n\nCAR Files Count: " + carFiles.length;
+        finalOutput += "\n\nCAR Files Count: " + carFiles.length;
 
       if (noticeString) {
         const noticeBuffer = Buffer.from(noticeString, 'utf8');
-        const hash = await sha256.digest(noticeBuffer);
-        const cid = CID.create(1, 0x55, hash);
-        const { writer, out } = await CarWriter.create([cid]);
-        await writer.put({ cid, bytes: noticeBuffer });
+        const noticeCID = CID.parse(decodedInner[1].toString());
+        const { writer, out } = await CarWriter.create([noticeCID]);
+        await writer.put({ noticeCID, bytes: noticeBuffer });
         await writer.close();
         const chunks = [];
         for await (const chunk of out) {
