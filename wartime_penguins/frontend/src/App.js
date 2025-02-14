@@ -2,6 +2,10 @@ import React, { useState } from 'react';
 import { ethers } from "ethers";
 import { Buffer } from "buffer";
 import { decode as cborDecode } from 'cbor2';
+import { createHelia } from 'helia';
+import { CID } from 'multiformats/cid';
+import { sha256 } from 'multiformats/hashes/sha2';
+import { CarWriter } from '@ipld/car/writer';
 import './App.css';
 
 function App() {
@@ -47,7 +51,7 @@ function App() {
       const fixedAddress = "0xA44151489861Fe9e3055d95adC98FbD462B948e7";
       const endpoint = "http://localhost:3001/issue_task";
       console.log("Proxy Endpoint:", endpoint);
-      setOutput("Sending request...");
+      setOutput("Sending mint request...");
 
       const response = await fetch(endpoint, {
         method: "POST",
@@ -58,62 +62,110 @@ function App() {
           input: encodedInput
         })
       });
-
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Request failed: ${errorText}`);
+        throw new Error(`Mint request failed: ${errorText}`);
       }
-
       const data = await response.json();
-      console.log("Response:", data);
+      console.log("Mint Response:", data);
       let finalOutput = JSON.stringify(data, null, 2);
+
+      let noticeString = "";
+      let bytes32Value = "";
 
       if (data.service_response && data.service_response[1]) {
         const secondResponse = data.service_response[1];
         const digestKey = Object.keys(secondResponse)[0];
         const noticeArray = secondResponse[digestKey][0][1];
         const fullBuffer = Buffer.from(noticeArray);
-        const calldata = "0x" + fullBuffer.toString("hex");
-        console.log("Full Notice Call (calldata):", calldata);
-        finalOutput += "\n\nFull Notice Call (calldata): " + calldata;
+        console.log("Full Notice Buffer (hex):", fullBuffer.toString("hex"));
+        finalOutput += "\n\nFull Notice Buffer (hex): " + fullBuffer.toString("hex");
 
         const iface = new ethers.utils.Interface(["function Notice(bytes data)"]);
-        const decodedCall = iface.decodeFunctionData("Notice", calldata);
-        console.log("Decoded Call:", decodedCall);
+        const decodedCall = iface.decodeFunctionData("Notice", "0x" + fullBuffer.toString("hex"));
+        console.log("Decoded Notice Call:", decodedCall);
         const innerPayload = decodedCall.data;
-        finalOutput += "\n\nPayload (hex): " + innerPayload;
+        finalOutput += "\n\nInner Payload (hex): " + innerPayload;
 
         const decodedInner = ethers.utils.defaultAbiCoder.decode(
           ["string", "bytes32"],
           innerPayload
         );
-        console.log("Decoded Inner:", decodedInner);
+        console.log("Decoded Notice Payload:", decodedInner);
         finalOutput += "\n\nDecoded Notice Payload:";
         finalOutput += "\n  String: " + decodedInner[0];
         finalOutput += "\n  Bytes32: " + decodedInner[1].toString();
+        noticeString = decodedInner[0];
+        bytes32Value = decodedInner[1].toString();
+      }
 
-        const bytes32Value = decodedInner[1].toString();
-        const bytes32No0x = bytes32Value.slice(2);
-        console.log("Bytes32 (without 0x):", bytes32No0x);
+      const bytes32No0x = bytes32Value.slice(2);
+      console.log("Bytes32 (without 0x):", bytes32No0x);
 
-        const solverEndpoint = `http://localhost:3001/get_preimage/2/${bytes32No0x}`;
-        console.log("Solver Endpoint:", solverEndpoint);
-        finalOutput += "\n\nSolver Endpoint: " + solverEndpoint;
+      const solverEndpoint = `http://localhost:3001/get_preimage/2/${bytes32No0x}`;
+      console.log("Solver Endpoint:", solverEndpoint);
+      finalOutput += "\n\nSolver Endpoint: " + solverEndpoint;
 
-        const preimageResponse = await fetch(solverEndpoint);
-        if (!preimageResponse.ok) {
-          const errText = await preimageResponse.text();
-          throw new Error("Solver preimage request failed: " + errText);
+      const preimageResponse = await fetch(solverEndpoint);
+      if (!preimageResponse.ok) {
+        const errText = await preimageResponse.text();
+        throw new Error("Solver preimage request failed: " + errText);
+      }
+      const preimageArrayBuffer = await preimageResponse.arrayBuffer();
+      const preimageBuffer = Buffer.from(preimageArrayBuffer);
+      console.log("Preimage Buffer (hex):", preimageBuffer.toString("hex"));
+      finalOutput += "\n\nPreimage Buffer (hex): " + preimageBuffer.toString("hex");
+
+      const decodedPreimage = cborDecode(preimageBuffer);
+      console.log("Decoded Preimage (CBOR):", decodedPreimage);
+      finalOutput += "\n\nDecoded Preimage (CBOR): " + JSON.stringify(decodedPreimage, null, 2);
+
+      const helia = await createHelia();
+      console.log("Helia Node Initialized:", helia);
+      finalOutput += "\n\nHelia Node Initialized: Peer ID: " + helia.libp2p.peerId.toString();
+
+      let carFiles = [];
+      if (Array.isArray(decodedPreimage)) {
+        for (const [index, item] of decodedPreimage.entries()) {
+          const itemBuffer = Buffer.from(item, 'utf8');
+          const hash = await sha256.digest(itemBuffer);
+          const cid = CID.create(1, 0x55, hash);
+          await helia.blockstore.put(cid, itemBuffer);
+          console.log(`Stored block ${index} with CID:`, cid.toString());
+          finalOutput += `\nStored block ${index} with CID: ${cid.toString()}`;
+
+          const { writer, out } = await CarWriter.create([cid]);
+          await writer.put({ cid, bytes: itemBuffer });
+          await writer.close();
+          const chunks = [];
+          for await (const chunk of out) {
+            chunks.push(chunk);
+          }
+          const carFileBuffer = Buffer.concat(chunks);
+          console.log(`CAR file for block ${index}:`, carFileBuffer.toString("hex"));
+          finalOutput += `\nCAR file for block ${index}: ${carFileBuffer.toString("hex")}`;
+          carFiles.push(carFileBuffer);
         }
+      } else {
+        console.warn("Decoded preimage is not an array");
+        finalOutput += "\nDecoded preimage is not an array.";
+      }
+      finalOutput += "\n\nCAR Files Count: " + carFiles.length;
 
-        const preimageArrayBuffer = await preimageResponse.arrayBuffer();
-        const preimageBuffer = Buffer.from(preimageArrayBuffer);
-        console.log("Preimage Buffer (hex):", preimageBuffer.toString("hex"));
-        finalOutput += "\n\nPreimage Buffer (hex): " + preimageBuffer.toString("hex");
-
-        const decodedPreimage = cborDecode(preimageBuffer);
-        console.log("Decoded Preimage (CBOR):", decodedPreimage);
-        finalOutput += "\n\nDecoded Preimage (CBOR): " + JSON.stringify(decodedPreimage, null, 2);
+      if (noticeString) {
+        const noticeBuffer = Buffer.from(noticeString, 'utf8');
+        const hash = await sha256.digest(noticeBuffer);
+        const cid = CID.create(1, 0x55, hash);
+        const { writer, out } = await CarWriter.create([cid]);
+        await writer.put({ cid, bytes: noticeBuffer });
+        await writer.close();
+        const chunks = [];
+        for await (const chunk of out) {
+          chunks.push(chunk);
+        }
+        const noticeCarBuffer = Buffer.concat(chunks);
+        console.log("Notice CAR file:", noticeCarBuffer.toString("hex"));
+        finalOutput += "\n\nNotice CAR file: " + noticeCarBuffer.toString("hex");
       }
 
       setOutput(finalOutput);
