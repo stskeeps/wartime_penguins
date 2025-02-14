@@ -10,7 +10,7 @@ contract MyContract is ERC721, CoprocessorAdapter, Ownable {
     mapping(bytes32 => address) public mintsInProgress;
 
     constructor(address _taskIssuerAddress, bytes32 _machineHash)
-        ERC721("MyNFT", "MNFT")
+        ERC721("Wartime Penguins", "WARPENGU")
         CoprocessorAdapter(_taskIssuerAddress, _machineHash)
         Ownable(msg.sender)
     {}
@@ -35,7 +35,7 @@ contract MyContract is ERC721, CoprocessorAdapter, Ownable {
 
         delete mintsInProgress[payloadHash];
         _safeMint(recipient, tokenId);
-        _tokenURIs[tokenId] = string.concat("ipfs://", uri);
+        _tokenURIs[tokenId] = string.concat(string.concat("ipfs://", uri), "/metadata.json");
     }
 
     function callCoprocessorBytes(bytes memory input) internal {

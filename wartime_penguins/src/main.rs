@@ -587,7 +587,7 @@ async fn process_ipfs_blocks(
 async fn emit_abi_encoded_notice(
     client: &hyper::Client<hyper::client::HttpConnector>,
     server_addr: &str,
-    metadata_cid: &str,
+    dir_cid: &str,
     ipfs_blocks: &[String],
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Process all IPFS blocks
@@ -604,7 +604,7 @@ async fn emit_abi_encoded_notice(
     let hash = emit_image_keccak256(client, server_addr, cbor_data).await?;   
     // Create tokens for ABI encoding with hash
     let tokens = vec![
-        Token::String(metadata_cid.to_string()),
+        Token::String(dir_cid.to_string()),
         Token::FixedBytes(hash.to_vec()),
     ];
     
@@ -623,6 +623,52 @@ async fn emit_abi_encoded_notice(
     let _response = client.request(notice_request).await?;
     println!("ABI encoded notice emitted successfully");
     Ok(())
+}
+
+async fn ipfs_files_mkdir(ipfs: &IpfsClient, path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let options = ipfs_api_backend_hyper::request::FilesMkdir {
+        path: path.into(),
+        hash: Some("keccak-256".into()),
+        cid_version: Some(1),
+        parents: Some(true),
+        ..Default::default()
+    };
+    ipfs.files_mkdir_with_options(options).await?;
+    
+    // Force CIDv1 and keccak-256 on the directory
+    let chcid_options = ipfs_api_backend_hyper::request::FilesChcid {
+        path: path.into(),
+        hash: Some("keccak-256".into()),
+        cid_version: Some(1),
+        ..Default::default()
+    };
+    ipfs.files_chcid_with_options(chcid_options).await?;
+    
+    Ok(())
+}
+
+async fn ipfs_files_write(ipfs: &IpfsClient, path: &str, data: Vec<u8>) -> Result<String, Box<dyn std::error::Error>> {
+    // First add the data to IPFS with keccak-256 and CIDv1
+    let hash = ipfs_add_with_keccak(ipfs, data).await?;
+    
+    // Then copy it to the MFS path
+    ipfs.files_cp(&format!("/ipfs/{}", hash), path).await?;
+    
+    // Force CIDv1 and keccak-256 on the MFS path
+    let options = ipfs_api_backend_hyper::request::FilesChcid {
+        path: path.into(),
+        hash: Some("keccak-256".into()),
+        cid_version: Some(1),
+        ..Default::default()
+    };
+    ipfs.files_chcid_with_options(options).await?;
+    
+    Ok(hash)
+}
+
+async fn ipfs_files_stat(ipfs: &IpfsClient, path: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let stat = ipfs.files_stat(path).await?;
+    Ok(stat.hash)
 }
 
 pub async fn generate_penguin_gif(
@@ -717,37 +763,82 @@ pub async fn generate_penguin_gif(
         encoder.write_frame(&create_frame(&img)).unwrap();
     }
 
-    // After writing the GIF file, upload it to IPFS
+    // Initialize IPFS client
     let ipfs = IpfsClient::default();
-    let gif_path = "/tmp/penguin_rush.gif";
+
+    // Create /nft directory in IPFS
+    ipfs_files_mkdir(&ipfs, "/nft").await?;
     
-    println!("Uploading to IPFS...");
-    let data = std::fs::read(gif_path)?;
+    // Write GIF to /nft/image.gif
+    println!("Writing image to IPFS Files...");
+    let data = std::fs::read("/tmp/penguin_rush.gif")?;
+    let image_hash = ipfs_files_write(&ipfs, "/nft/image.gif", data).await?;
+    println!("Image CID: {}", image_hash);
     
-    // Upload to IPFS with keccak-256 and CIDv1
-    let res_hash = ipfs_add_with_keccak(&ipfs, data.clone()).await?;
-    println!("Image uploaded to IPFS with hash: {}", res_hash);
-    println!("You can view image at: http://127.0.0.1:8080/ipfs/{}", res_hash);
+    // Generate metadata
+    let mut metadata = json!({
+        "name": format!("{} Wartime Penguin(s)", num_penguins),
+        "description": "Penguin warrior in a snowy battlefield",
+        "image": format!("ipfs://{}", image_hash),
+        "attributes": [
+            {
+                "trait_type": "Number of Penguins",
+                "value": num_penguins
+            },
+            {
+                "trait_type": "Sky Theme",
+                "value": match sky_theme {
+                    SkyTheme::Day => "Day",
+                    SkyTheme::Dawn => "Dawn",
+                    SkyTheme::Dusk => "Dusk",
+                    SkyTheme::Night => "Night",
+                    SkyTheme::Aurora => "Aurora"
+                }
+            }
+        ]
+    });
     
-    // Get IPFS block references
-    let ipfs_blocks = get_ipfs_refs(&ipfs, &res_hash).await?;
+    // Add penguin-specific attributes
+    let mut penguin_attributes = Vec::new();
+    for (i, penguin) in penguins.iter().enumerate() {
+        penguin_attributes.push(json!({
+            "trait_type": format!("Penguin {} Color", i + 1),
+            "value": rgb_to_hex(&penguin.color)
+        }));
+        penguin_attributes.push(json!({
+            "trait_type": format!("Penguin {} Size", i + 1),
+            "value": penguin.size
+        }));
+        penguin_attributes.push(json!({
+            "trait_type": format!("Penguin {} Knife Hand", i + 1),
+            "value": if penguin.knife_hand { "Right" } else { "Left" }
+        }));
+    }
     
-    // Generate and upload NFT metadata to IPFS
-    let metadata_hash = generate_nft_metadata(
-        client, 
-        server_addr, 
-        &res_hash, 
-        num_penguins,
-        &sky_theme,
-        &penguins
-    ).await?;
+    if let Some(attributes) = metadata["attributes"].as_array_mut() {
+        attributes.extend(penguin_attributes);
+    }
     
-    // Emit ABI encoded notice with metadata CID and image hash
-    emit_abi_encoded_notice(client, server_addr, &metadata_hash, &ipfs_blocks).await.unwrap();
+    // Write metadata to /nft/metadata.json
+    println!("Writing metadata to IPFS Files...");
+    let metadata_bytes = metadata.to_string().into_bytes();
+    let metadata_hash = ipfs_files_write(&ipfs, "/nft/metadata.json", metadata_bytes).await?;
+    println!("Metadata CID: {}", metadata_hash);
     
-    // Also emit the regular hashes notice for logging
-    let hashes = format!("Image: {}\nMetadata: {}", res_hash, metadata_hash);
-    println!("{}", hashes);
+    // Get directory hash
+    let dir_hash = ipfs_files_stat(&ipfs, "/nft").await?;
+    println!("NFT Directory CID: {}", dir_hash);
+    
+    // Get all block references
+    let ipfs_blocks = get_ipfs_refs(&ipfs, &dir_hash).await?;
+    
+    // Emit ABI encoded notice
+    emit_abi_encoded_notice(client, server_addr, &dir_hash, &ipfs_blocks).await?;
+    
+    // Log hashes
+    println!("Directory: {}", dir_hash);
+    println!("Image: {}", image_hash);
+    println!("Metadata: {}", metadata_hash);
     
     Ok(())
 }
