@@ -134,17 +134,6 @@ function App() {
             await helia.blockstore.put(cid, blockBuffer);
             console.log(`Stored block ${index} with CID:`, cid.toString());
             finalOutput += `\nStored block ${index} with CID: ${cid.toString()}`;
-            const { writer, out } = await CarWriter.create([cid]);
-            await writer.put({ cid, bytes: blockBuffer });
-            await writer.close();
-            const chunks = [];
-            for await (const chunk of out) {
-              chunks.push(chunk);
-            }
-            const carFileBuffer = Buffer.concat(chunks);
-            console.log(`CAR file for block ${index}:`, carFileBuffer.toString("hex"));
-            finalOutput += `\nCAR file for block ${index}: ${carFileBuffer.toString("hex")}`;
-            carFiles.push(carFileBuffer);
           }
         } else {
           console.warn("Decoded preimage is not an array");
