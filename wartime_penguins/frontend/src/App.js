@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ethers } from "ethers";
+import { Buffer } from "buffer";
 import './App.css';
 
 function App() {
@@ -52,8 +53,8 @@ function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          machineHash: machineHash,
-          fixedAddress: fixedAddress,
+          machineHash,
+          fixedAddress,
           input: encodedInput
         })
       });
@@ -64,7 +65,36 @@ function App() {
       }
       const data = await response.json();
       console.log("Response:", data);
-      setOutput(JSON.stringify(data, null, 2));
+      let finalOutput = JSON.stringify(data, null, 2);
+
+      if (data.service_response && data.service_response[1]) {
+        const secondResponse = data.service_response[1];
+        const digestKey = Object.keys(secondResponse)[0];
+        const noticeArray = secondResponse[digestKey][0][1];
+        const fullBuffer = Buffer.from(noticeArray);
+        console.log("Full Notice Buffer (hex):", fullBuffer.toString("hex"));
+        finalOutput += "\n\nFull Notice Buffer (hex): " + fullBuffer.toString("hex");
+
+        const payloadBuffer = fullBuffer.slice(4);
+        const payloadHex = "0x" + payloadBuffer.toString("hex");
+        console.log("Payload Hex for decoding:", payloadHex);
+
+        let decoded;
+        try {
+          decoded = ethers.utils.defaultAbiCoder.decode(
+            ["string", "bytes32"],
+            payloadHex
+          );
+        } catch (e) {
+          throw new Error("Decoding failed: " + e.message);
+        }
+        finalOutput += "\n\nDecoded Notice Payload:";
+        finalOutput += "\n  String: " + decoded[0];
+        finalOutput += "\n  Bytes32: " + decoded[1].toString();
+        console.log("Decoded Notice Payload:", decoded);
+      }
+
+      setOutput(finalOutput);
     } catch (error) {
       console.error(error);
       setOutput("Error: " + error.message);

@@ -2,8 +2,9 @@
   "name": "frontend",
   "version": "0.1.0",
   "private": true,
-  "type":"module",
+  "type": "module",
   "dependencies": {
+    "buffer": "^6.0.3",
     "cra-template": "1.2.0",
     "ethers": "^5.7.2",
     "express": "^4.21.2",
