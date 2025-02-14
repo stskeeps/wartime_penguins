@@ -155,6 +155,7 @@ function App() {
       if (noticeString) {
         const noticeCID = CID.parse(noticeString);
         console.log("Notice CID:", noticeCID);
+        console.log("Notice CID string:", noticeCID.toString());
         const { writer, out } = await CarWriter.create([noticeCID]);
         const carBlob = carWriterOutToBlob(out);
         await car(helia).export(noticeCID, writer);
