@@ -129,7 +129,9 @@ function App() {
       console.log("Decoded Preimage (CBOR):", decodedPreimage);
       finalOutput += "\n\nDecoded Preimage (CBOR): " + JSON.stringify(decodedPreimage, null, 2);
 
-      const helia = await createHelia();
+      const helia = await createHelia({
+        start: false
+      });
       console.log("Helia Node Initialized:", helia);
       finalOutput += "\n\nHelia Node Initialized: Peer ID: " + helia.libp2p.peerId.toString();
 
