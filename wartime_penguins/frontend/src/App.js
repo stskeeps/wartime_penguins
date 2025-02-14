@@ -151,14 +151,13 @@ function App() {
         finalOutput += "\n\nCAR Files Count: " + carFiles.length;
 
       if (noticeString) {
-        const noticeBuffer = Buffer.from(noticeString, 'utf8');
-        const noticeCID = CID.parse(decodedInner[1].toString());
+        const noticeCID = CID.parse(noticeString);
         const { writer, out } = await CarWriter.create([noticeCID]);
         const carBlob = await carWriterOutToBlob(out);
         await car(helia).export(noticeCID, writer);
         console.log(await carBlob);
-        await writer.put({ noticeCID, bytes: noticeBuffer });
-        await writer.close();
+        // await writer.put({ noticeCID, bytes: noticeBuffer });
+        // await writer.close();
         const chunks = [];
         for await (const chunk of out) {
           chunks.push(chunk);
