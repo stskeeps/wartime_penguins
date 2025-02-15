@@ -201,9 +201,9 @@ function App() {
           console.info(entry);
         }
         const { writer, out } = await CarWriter.create([noticeCID]);
+        const carBlob = carWriterOutToBlob(out);
         await car(helia).export(noticeCID, writer);
-        const carBlob = await carWriterOutToBlob(out);
-        setCarBlob(carBlob);
+        setCarBlob(await carBlob);
 
         console.log("carBlob:", carBlob);
 
@@ -337,7 +337,7 @@ function App() {
 
         {carBlob && (
           <div>
-            <a href={URL.createObjectURL(carBlob)} download="notice.car">
+            <a href={URL.createObjectURL(carBlob)} download="penguin-nft.car">
               Download CAR File
             </a>
           </div>
