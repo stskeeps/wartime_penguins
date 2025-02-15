@@ -43,7 +43,8 @@ function App() {
       }
   };
 
-  const handleMint = async () => {
+  // Renamed from handleMint to handleComputeNFT
+  const handleComputeNFT = async () => {
     if (!walletAddress) {
       alert("Connect your wallet first!");
       return;
@@ -64,7 +65,7 @@ function App() {
       const fixedAddress = "0xA44151489861Fe9e3055d95adC98FbD462B948e7";
       const endpoint = "http://localhost:3001/issue_task";
       console.log("Proxy Endpoint:", endpoint);
-      setOutput("Sending mint request...");
+      setOutput("Compute nft request...");
 
       const response = await fetch(endpoint, {
         method: "POST",
@@ -143,8 +144,8 @@ function App() {
         JSON.stringify(decodedPreimage, null, 2);
 
       const helia = await createHelia({ start: false,
-        getHasher: (initialHashers, loadHasher) => { 
-          return async (code) => { 
+        getHasher: (initialHashers, loadHasher) => {
+          return async (code) => {
             if (code === keccak256.code) {
               return keccak256;
             } else if (code === sha256.code) {
@@ -250,6 +251,59 @@ function App() {
       alert("Error viewing NFT: " + error.message);
     }
   };
+
+  const handleMintNFT = async () => {
+    if (!walletAddress) {
+      alert("Connect your wallet first!");
+      return;
+    }
+    if (!seed) {
+      alert("Please enter a seed value!");
+      return;
+    }
+    try {
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const signer = provider.getSigner();
+
+      const contractAddress = "0xA44151489861Fe9e3055d95adC98FbD462B948e7";
+
+      const myContractABI = [
+        "function requestmint(uint256 seed) external",
+        "function mintsInProgress(bytes32) public view returns (address)"
+      ];
+
+      const contract = new ethers.Contract(contractAddress, myContractABI, signer);
+
+      const seedValue = ethers.BigNumber.from(seed);
+      let gasLimit;
+      try {
+        gasLimit = await contract.estimateGas.requestmint(seedValue);
+        console.log("Estimated gas:", gasLimit.toString());
+      } catch (gasErr) {
+        console.warn("Gas estimation failed, using fallback gas limit", gasErr);
+        gasLimit = ethers.BigNumber.from("2000000");
+      }
+
+      const tx = await contract.requestmint(seedValue, { gasLimit });
+      setOutput("RequestMint sent, tx hash: " + tx.hash);
+      console.log("Transaction sent:", tx.hash);
+      const receipt = await tx.wait();
+      if (receipt.status === 0) {
+        throw new Error("Transaction reverted");
+      }
+      setOutput(`RequestMint confirmed in block ${receipt.blockNumber}`);
+      console.log("Transaction receipt:", receipt);
+      alert("Mint request sent. The NFT will be minted once the coprocessor calls handleNotice.");
+    } catch (error) {
+      console.error("Error requesting mint:", error);
+      let errMsg = error.message;
+      if (error.data) {
+        errMsg += " | " + JSON.stringify(error.data);
+      }
+      setOutput("Error requesting mint: " + errMsg);
+    }
+  };
+
   return (
     <div className="App">
       <div className="container">
@@ -261,8 +315,16 @@ function App() {
           value={seed}
           onChange={(e) => setSeed(e.target.value)}
         />
-        <button onClick={handleMint}>Mint</button>
+        <button onClick={handleComputeNFT}>Compute NFT</button>
         <button onClick={handleViewNFT}>View NFT</button>
+        {carBlob && (
+          <div>
+            <a href={URL.createObjectURL(carBlob)} download="notice.car">
+              Download CAR File
+            </a>
+          </div>
+        )}
+        <button onClick={handleMintNFT}>Mint NFT</button>
         {nftMetadata && (
           <div>
             <h2>NFT Metadata</h2>
@@ -270,13 +332,6 @@ function App() {
             {nftImageUrl && (
               <img src={nftImageUrl} alt="NFT" style={{ maxWidth: "300px" }} />
             )}
-          </div>
-        )}
-        {carBlob && (
-          <div>
-            <a href={URL.createObjectURL(carBlob)} download="notice.car">
-              Download CAR File
-            </a>
           </div>
         )}
         <pre className="output">{output}</pre>
