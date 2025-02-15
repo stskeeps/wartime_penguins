@@ -265,7 +265,7 @@ function App() {
       const provider = new ethers.providers.Web3Provider(window.ethereum);
       const signer = provider.getSigner();
 
-      const contractAddress = "0x680bBA4E54f62caafC906B9382C150603a7EF226";
+      const contractAddress = "0xf1F984f534685669D19E9D073530d75E838bC9b6";
 
       const myContractABI = [
         "function requestmint(uint256 seed) external",
