@@ -337,11 +337,7 @@ function App() {
 
         {carBlob && (
           <div>
-            <a
-              className="download-button"
-              href={URL.createObjectURL(carBlob)}
-              download="notice.car"
-            >
+            <a href={URL.createObjectURL(carBlob)} download="notice.car">
               Download CAR File
             </a>
           </div>
