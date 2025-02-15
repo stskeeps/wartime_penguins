@@ -27,6 +27,7 @@ function App() {
   const [nftCID, setNftCID] = useState("");
   const [carBlob, setCarBlob] = useState(null);
   const [helia, setHelia] = useState(null);
+  const [hasViewedNFT, setHasViewedNFT] = useState(false);
 
   const connectWallet = async () => {
     if (window.ethereum)
@@ -203,12 +204,6 @@ function App() {
         const carBlob = carWriterOutToBlob(out);
         await car(helia).export(noticeCID, writer);
         console.log(await carBlob);
-        // await writer.put({ noticeCID, bytes: noticeBuffer });
-        // await writer.close();
-        // const chunks = [];
-        // for await (const chunk of out) {
-        //   chunks.push(chunk);
-        // }
 
         finalOutput += "\n\nNotice CAR Blob: " + carBlob;
       }
@@ -246,6 +241,7 @@ function App() {
       const localImageUrl = URL.createObjectURL(imageBlob);
       setNftMetadata(metadata);
       setNftImageUrl(localImageUrl);
+      setHasViewedNFT(true);
     } catch (error) {
       console.error(error);
       alert("Error viewing NFT: " + error.message);
@@ -312,7 +308,9 @@ function App() {
           alt="Header"
           style={{ width: "100%", marginBottom: "20px" }}
         />
+
         <h1>Wartime Penguins NFT</h1>
+
         <button onClick={connectWallet}>Connect Wallet</button>
         <input
           type="number"
@@ -320,8 +318,15 @@ function App() {
           value={seed}
           onChange={(e) => setSeed(e.target.value)}
         />
-        <button onClick={handleComputeNFT}>Compute NFT</button>
-        <button onClick={handleViewNFT}>View NFT</button>
+
+        <button onClick={handleComputeNFT} disabled={!walletAddress || !seed}>
+          Compute NFT
+        </button>
+
+        <button onClick={handleViewNFT} disabled={!nftCID}>
+          View NFT
+        </button>
+
         {carBlob && (
           <div>
             <a href={URL.createObjectURL(carBlob)} download="notice.car">
@@ -329,7 +334,11 @@ function App() {
             </a>
           </div>
         )}
-        <button onClick={handleMintNFT}>Mint NFT</button>
+
+        <button onClick={handleMintNFT} disabled={!seed || !nftCID || !hasViewedNFT}>
+          Mint NFT
+        </button>
+
         {nftMetadata && (
           <div>
             <h2>NFT Metadata</h2>
@@ -339,6 +348,7 @@ function App() {
             )}
           </div>
         )}
+
         <pre className="output">{output}</pre>
       </div>
     </div>

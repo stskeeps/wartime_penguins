@@ -46,6 +46,14 @@
     background-color: #0056b3;
   }
 
+  button:disabled {
+    background-color: #ccc !important;
+    color: #666 !important;
+    cursor: not-allowed !important;
+    opacity: 0.8 !important;
+    pointer-events: none !important;
+  }
+
   .output {
     text-align: left;
     margin-top: 20px;
