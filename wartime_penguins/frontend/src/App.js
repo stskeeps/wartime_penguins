@@ -61,7 +61,7 @@ function App() {
       console.log("Encoded Input:", encodedInput);
 
       const machineHash =
-        "e33405834bb3bd002e08d68ffb0f5748fb682ad2c0bda78edeea6506b74374f5";
+        "4f9e81934a1096047822d363dc5c5c05348fc2ed19cc54e0814eb37612d52018";
       const fixedAddress = "0xA44151489861Fe9e3055d95adC98FbD462B948e7";
       const endpoint = "http://localhost:3001/issue_task";
       console.log("Proxy Endpoint:", endpoint);
@@ -265,7 +265,7 @@ function App() {
       const provider = new ethers.providers.Web3Provider(window.ethereum);
       const signer = provider.getSigner();
 
-      const contractAddress = "0xA44151489861Fe9e3055d95adC98FbD462B948e7";
+      const contractAddress = "0x680bBA4E54f62caafC906B9382C150603a7EF226";
 
       const myContractABI = [
         "function requestmint(uint256 seed) external",
@@ -307,6 +307,11 @@ function App() {
   return (
     <div className="App">
       <div className="container">
+        <img
+          src="/penguin.png"
+          alt="Header"
+          style={{ width: "100%", marginBottom: "20px" }}
+        />
         <h1>Mint Your NFT</h1>
         <button onClick={connectWallet}>Connect Wallet</button>
         <input
