@@ -201,9 +201,11 @@ function App() {
           console.info(entry);
         }
         const { writer, out } = await CarWriter.create([noticeCID]);
-        const carBlob = carWriterOutToBlob(out);
         await car(helia).export(noticeCID, writer);
-        console.log(await carBlob);
+        const carBlob = await carWriterOutToBlob(out);
+        setCarBlob(carBlob);
+
+        console.log("carBlob:", carBlob);
 
         finalOutput += "\n\nNotice CAR Blob: " + carBlob;
       }
