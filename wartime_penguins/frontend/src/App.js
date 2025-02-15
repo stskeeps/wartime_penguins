@@ -312,7 +312,7 @@ function App() {
           alt="Header"
           style={{ width: "100%", marginBottom: "20px" }}
         />
-        <h1>Mint Your NFT</h1>
+        <h1>Wartime Penguins NFT</h1>
         <button onClick={connectWallet}>Connect Wallet</button>
         <input
           type="number"
