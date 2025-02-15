@@ -1,31 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import { ethers } from "ethers";
 import { Buffer } from "buffer";
-import { decode as cborDecode } from 'cbor2';
-import { createHelia } from 'helia';
-import { CID } from 'multiformats/cid';
-import { sha256 } from 'multiformats/hashes/sha2';
-import { CarWriter } from '@ipld/car/writer';
-import { car } from '@helia/car'
-import { unixfs } from '@helia/unixfs'
+import { decode as cborDecode } from "cbor2";
+import { createHelia } from "helia";
+import { CID } from "multiformats/cid";
+import { CarWriter } from "@ipld/car/writer";
+import { car } from "@helia/car";
+import { unixfs } from "@helia/unixfs";
 
-import './App.css';
-
-async function carWriterOutToBlob (carReaderIterable) {
-    const parts = []
-    for await (const part of carReaderIterable) {
-      parts.push(part)
-    }
-    return new Blob(parts, { type: 'application/car' })
+async function carWriterOutToBlob(carReaderIterable) {
+  const parts = [];
+  for await (const part of carReaderIterable) {
+    parts.push(part);
   }
+  return new Blob(parts, { type: "application/car" });
+}
 
 function App() {
   const [walletAddress, setWalletAddress] = useState("");
   const [seed, setSeed] = useState("");
   const [output, setOutput] = useState("");
+  const [nftMetadata, setNftMetadata] = useState(null);
+  const [nftImageUrl, setNftImageUrl] = useState("");
+  const [nftCID, setNftCID] = useState("");
+  const [carBlob, setCarBlob] = useState(null);
 
   const connectWallet = async () => {
-    if (window.ethereum) {
+    if (window.ethereum)
       try {
         const provider = new ethers.providers.Web3Provider(window.ethereum);
         await window.ethereum.request({ method: "eth_requestAccounts" });
@@ -37,9 +38,6 @@ function App() {
         console.error(error);
         setOutput("Error connecting wallet");
       }
-    } else {
-      alert("Please install MetaMask.");
-    }
   };
 
   const handleMint = async () => {
@@ -58,7 +56,8 @@ function App() {
       );
       console.log("Encoded Input:", encodedInput);
 
-      const machineHash = "e33405834bb3bd002e08d68ffb0f5748fb682ad2c0bda78edeea6506b74374f5";
+      const machineHash =
+        "e33405834bb3bd002e08d68ffb0f5748fb682ad2c0bda78edeea6506b74374f5";
       const fixedAddress = "0xA44151489861Fe9e3055d95adC98FbD462B948e7";
       const endpoint = "http://localhost:3001/issue_task";
       console.log("Proxy Endpoint:", endpoint);
@@ -70,8 +69,8 @@ function App() {
         body: JSON.stringify({
           machineHash,
           fixedAddress,
-          input: encodedInput
-        })
+          input: encodedInput,
+        }),
       });
       if (!response.ok) {
         const errorText = await response.text();
@@ -90,11 +89,16 @@ function App() {
         const digestKey = Object.keys(secondResponse)[0];
         const noticeArray = secondResponse[digestKey][0][1];
         const fullBuffer = Buffer.from(noticeArray);
-        console.log("Full Notice Buffer (hex):", fullBuffer.toString("hex"));
-        finalOutput += "\n\nFull Notice Buffer (hex): " + fullBuffer.toString("hex");
+        finalOutput +=
+          "\n\nFull Notice Buffer (hex): " + fullBuffer.toString("hex");
 
-        const iface = new ethers.utils.Interface(["function Notice(bytes data)"]);
-        const decodedCall = iface.decodeFunctionData("Notice", "0x" + fullBuffer.toString("hex"));
+        const iface = new ethers.utils.Interface([
+          "function Notice(bytes data)",
+        ]);
+        const decodedCall = iface.decodeFunctionData(
+          "Notice",
+          "0x" + fullBuffer.toString("hex")
+        );
         console.log("Decoded Notice Call:", decodedCall);
         const innerPayload = decodedCall.data;
         finalOutput += "\n\nInner Payload (hex): " + innerPayload;
@@ -108,6 +112,7 @@ function App() {
         finalOutput += "\n  Bytes32: " + decodedInner[1].toString();
         noticeString = decodedInner[0];
         bytes32Value = decodedInner[1].toString();
+        setNftCID(noticeString);
       }
 
       const bytes32No0x = bytes32Value.slice(2);
@@ -125,42 +130,49 @@ function App() {
       const preimageArrayBuffer = await preimageResponse.arrayBuffer();
       const preimageBuffer = Buffer.from(preimageArrayBuffer);
       console.log("Preimage Buffer (hex):", preimageBuffer.toString("hex"));
-      finalOutput += "\n\nPreimage Buffer (hex): " + preimageBuffer.toString("hex");
+      finalOutput +=
+        "\n\nPreimage Buffer (hex): " + preimageBuffer.toString("hex");
 
       const decodedPreimage = cborDecode(preimageBuffer);
       console.log("Decoded Preimage (CBOR):", decodedPreimage);
-      finalOutput += "\n\nDecoded Preimage (CBOR): " + JSON.stringify(decodedPreimage, null, 2);
+      finalOutput +=
+        "\n\nDecoded Preimage (CBOR): " +
+        JSON.stringify(decodedPreimage, null, 2);
 
       const helia = await createHelia({
-        start: false
+        start: false,
       });
       console.log("Helia Node Initialized:", helia);
-      finalOutput += "\n\nHelia Node Initialized: Peer ID: " + helia.libp2p.peerId.toString();
+      finalOutput +=
+        "\n\nHelia Node Initialized: Peer ID: " +
+        helia.libp2p.peerId.toString();
 
       let carFiles = [];
-        if (Array.isArray(decodedPreimage)) {
-          for (const [index, entry] of decodedPreimage.entries()) {
-            const cidText = entry[0];
-            const blockArray = entry[1];
-            const blockHash = Buffer.from(blockArray);
-            const cid = CID.parse(cidText);
-            const solverEndpoint = `http://localhost:3001/get_preimage/2/${blockHash.toString("hex")}`;
-      
-            const preimageResponse = await fetch(solverEndpoint);
-            if (!preimageResponse.ok) {
-              const errText = await preimageResponse.text();
-              throw new Error("Solver preimage request failed: " + errText);
-            }
-            const blockBuffer = await preimageResponse.arrayBuffer();
-            await helia.blockstore.put(cid, new Uint8Array(blockBuffer));
-            console.log(`Stored block ${index} with CID:`, cid.toString());
-            finalOutput += `\nStored block ${index} with CID: ${cid.toString()}`;
+      if (Array.isArray(decodedPreimage)) {
+        for (const [index, entry] of decodedPreimage.entries()) {
+          const cidText = entry[0];
+          const blockArray = entry[1];
+          const blockHash = Buffer.from(blockArray);
+          const cid = CID.parse(cidText);
+          const solverEndpoint = `http://localhost:3001/get_preimage/2/${blockHash.toString(
+            "hex"
+          )}`;
+
+          const preimageResponse = await fetch(solverEndpoint);
+          if (!preimageResponse.ok) {
+            const errText = await preimageResponse.text();
+            throw new Error("Solver preimage request failed: " + errText);
           }
-        } else {
-          console.warn("Decoded preimage is not an array");
-          finalOutput += "\nDecoded preimage is not an array.";
+          const blockBuffer = await preimageResponse.arrayBuffer();
+          await helia.blockstore.put(cid, new Uint8Array(blockBuffer));
+          console.log(`Stored block ${index} with CID:`, cid.toString());
+          finalOutput += `\nStored block ${index} with CID: ${cid.toString()}`;
         }
-        finalOutput += "\n\nCAR Files Count: " + carFiles.length;
+      } else {
+        console.warn("Decoded preimage is not an array");
+        finalOutput += "\nDecoded preimage is not an array.";
+      }
+      finalOutput += "\n\nCAR Files Count: " + carFiles.length;
 
       if (noticeString) {
         const noticeCID = CID.parse(noticeString);
@@ -168,7 +180,7 @@ function App() {
         console.log("Notice CID string:", noticeCID.toString());
         const fs = unixfs(helia);
         for await (const entry of fs.ls(noticeCID)) {
-          console.info(entry)
+          console.info(entry);
         }
         const { writer, out } = await CarWriter.create([noticeCID]);
         const carBlob = carWriterOutToBlob(out);
@@ -191,6 +203,38 @@ function App() {
     }
   };
 
+  const handleViewNFT = async () => {
+    if (!nftCID) return alert("No NFT CID available.");
+    try {
+      const helia = await createHelia({ start: false });
+      const fs = unixfs(helia);
+      const cid = CID.parse(
+        nftCID.startsWith("ipfs://") ? nftCID.slice(7) : nftCID
+      );
+      const chunks = [];
+      for await (const chunk of fs.cat(cid, { path: "metadata.json" })) {
+        chunks.push(chunk);
+      }
+      const metadataBuffer = Buffer.concat(chunks);
+      const metadataText = metadataBuffer.toString("utf8");
+      const metadata = JSON.parse(metadataText);
+      let imageCID = metadata.image;
+      if (imageCID.startsWith("ipfs://")) imageCID = imageCID.slice(7);
+      const imgCID = CID.parse(imageCID);
+      const imageChunks = [];
+      for await (const chunk of fs.cat(imgCID)) {
+        imageChunks.push(chunk);
+      }
+      const imageBuffer = Buffer.concat(imageChunks);
+      const imageBlob = new Blob([imageBuffer], { type: "image/gif" });
+      const localImageUrl = URL.createObjectURL(imageBlob);
+      setNftMetadata(metadata);
+      setNftImageUrl(localImageUrl);
+    } catch (error) {
+      console.error(error);
+      alert("Error viewing NFT: " + error.message);
+    }
+  };
   return (
     <div className="App">
       <div className="container">
@@ -203,6 +247,23 @@ function App() {
           onChange={(e) => setSeed(e.target.value)}
         />
         <button onClick={handleMint}>Mint</button>
+        <button onClick={handleViewNFT}>View NFT</button>
+        {nftMetadata && (
+          <div>
+            <h2>NFT Metadata</h2>
+            <pre>{JSON.stringify(nftMetadata, null, 2)}</pre>
+            {nftImageUrl && (
+              <img src={nftImageUrl} alt="NFT" style={{ maxWidth: "300px" }} />
+            )}
+          </div>
+        )}
+        {carBlob && (
+          <div>
+            <a href={URL.createObjectURL(carBlob)} download="notice.car">
+              Download CAR File
+            </a>
+          </div>
+        )}
         <pre className="output">{output}</pre>
       </div>
     </div>
