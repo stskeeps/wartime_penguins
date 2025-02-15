@@ -6,7 +6,9 @@
   "dependencies": {
     "@helia/car": "^4.0.2",
     "@helia/unixfs": "^4.0.2",
+    "@helia/utils": "^1.2.1",
     "@ipld/car": "^5.4.0",
+    "@multiformats/sha3": "^3.0.2",
     "buffer": "^6.0.3",
     "cbor-js": "^0.1.0",
     "cbor2": "^1.10.0",

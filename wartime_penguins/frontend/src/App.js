@@ -7,6 +7,8 @@ import { CID } from "multiformats/cid";
 import { CarWriter } from "@ipld/car/writer";
 import { car } from "@helia/car";
 import { unixfs } from "@helia/unixfs";
+import { keccak256 } from '@multiformats/sha3'
+import { sha256 } from 'multiformats/hashes/sha2'
 
 async function carWriterOutToBlob(carReaderIterable) {
   const parts = [];
@@ -24,6 +26,7 @@ function App() {
   const [nftImageUrl, setNftImageUrl] = useState("");
   const [nftCID, setNftCID] = useState("");
   const [carBlob, setCarBlob] = useState(null);
+  const [helia, setHelia] = useState(null);
 
   const connectWallet = async () => {
     if (window.ethereum)
@@ -139,9 +142,22 @@ function App() {
         "\n\nDecoded Preimage (CBOR): " +
         JSON.stringify(decodedPreimage, null, 2);
 
-      const helia = await createHelia({
-        start: false,
+      const helia = await createHelia({ start: false,
+        getHasher: (initialHashers, loadHasher) => { 
+          return async (code) => { 
+            if (code === keccak256.code) {
+              return keccak256;
+            } else if (code === sha256.code) {
+              return sha256;
+            } else {
+              throw new Error("Unsupported hash code: " + code);
+            }
+          }
+        }
       });
+      setHelia(helia);
+
+
       console.log("Helia Node Initialized:", helia);
       finalOutput +=
         "\n\nHelia Node Initialized: Peer ID: " +
@@ -206,7 +222,6 @@ function App() {
   const handleViewNFT = async () => {
     if (!nftCID) return alert("No NFT CID available.");
     try {
-      const helia = await createHelia({ start: false });
       const fs = unixfs(helia);
       const cid = CID.parse(
         nftCID.startsWith("ipfs://") ? nftCID.slice(7) : nftCID
