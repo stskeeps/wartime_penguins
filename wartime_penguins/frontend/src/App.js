@@ -7,8 +7,8 @@ import { CID } from "multiformats/cid";
 import { CarWriter } from "@ipld/car/writer";
 import { car } from "@helia/car";
 import { unixfs } from "@helia/unixfs";
-import { keccak256 } from '@multiformats/sha3'
-import { sha256 } from 'multiformats/hashes/sha2'
+import { keccak256 } from "@multiformats/sha3";
+import { sha256 } from "multiformats/hashes/sha2";
 
 async function carWriterOutToBlob(carReaderIterable) {
   const parts = [];
@@ -144,7 +144,8 @@ function App() {
         "\n\nDecoded Preimage (CBOR): " +
         JSON.stringify(decodedPreimage, null, 2);
 
-      const helia = await createHelia({ start: false,
+      const helia = await createHelia({
+        start: false,
         getHasher: (initialHashers, loadHasher) => {
           return async (code) => {
             if (code === keccak256.code) {
@@ -154,11 +155,10 @@ function App() {
             } else {
               throw new Error("Unsupported hash code: " + code);
             }
-          }
-        }
+          };
+        },
       });
       setHelia(helia);
-
 
       console.log("Helia Node Initialized:", helia);
       finalOutput +=
@@ -267,10 +267,14 @@ function App() {
 
       const myContractABI = [
         "function requestmint(uint256 seed) external",
-        "function mintsInProgress(bytes32) public view returns (address)"
+        "function mintsInProgress(bytes32) public view returns (address)",
       ];
 
-      const contract = new ethers.Contract(contractAddress, myContractABI, signer);
+      const contract = new ethers.Contract(
+        contractAddress,
+        myContractABI,
+        signer
+      );
 
       const seedValue = ethers.BigNumber.from(seed);
       let gasLimit;
@@ -291,7 +295,9 @@ function App() {
       }
       setOutput(`RequestMint confirmed in block ${receipt.blockNumber}`);
       console.log("Transaction receipt:", receipt);
-      alert("Mint request sent. The NFT will be minted once the coprocessor calls handleNotice.");
+      alert(
+        "Mint request sent. The NFT will be minted once the coprocessor calls handleNotice."
+      );
     } catch (error) {
       console.error("Error requesting mint:", error);
       let errMsg = error.message;
@@ -331,13 +337,20 @@ function App() {
 
         {carBlob && (
           <div>
-            <a href={URL.createObjectURL(carBlob)} download="notice.car">
+            <a
+              className="download-button"
+              href={URL.createObjectURL(carBlob)}
+              download="notice.car"
+            >
               Download CAR File
             </a>
           </div>
         )}
 
-        <button onClick={handleMintNFT} disabled={!seed || !nftCID || !hasViewedNFT}>
+        <button
+          onClick={handleMintNFT}
+          disabled={!seed || !nftCID || !hasViewedNFT}
+        >
           Mint NFT
         </button>
 
