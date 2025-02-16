@@ -1,6 +1,6 @@
-# Wartime Penguin🐧
+# Wartime Penguins🐧
 
-Guide to walk you through setting up and running the Wartime Penguin NFT project, which uses Cartesi Coprocessor for NFT computation on the Holesky testnet.
+Guide to walk you through setting up and running the Wartime Penguins NFT project, which uses Cartesi Coprocessor for NFT computation on the Holesky testnet.
 
 ## Prerequisites
 
@@ -11,9 +11,9 @@ Guide to walk you through setting up and running the Wartime Penguin NFT project
 
 ## Publishing
 
-1. Navigate to the wartime_penguin directory:
+1. Navigate to the wartime_penguins directory:
 ```bash
-cd wartime_penguin
+cd wartime_penguins
 ```
 
 2. Publish to Holesky testnet:
@@ -30,7 +30,7 @@ cartesi-coprocessor publish-status --network testnet
 ```bash
 cartesi-coprocessor address-book
 ```
-Note down the testnet addresse and machine hash for the next step.
+Note down the testnet addresses and machine hash for the next step.
 
 ## Deploying the Smart Contract
 
@@ -85,7 +85,7 @@ The application should open in your default browser.
    - Click "Compute NFT"
    - Once computation is complete, click "View NFT"
    - You can now view the NFT metadata and download the car file
-   - Click "Mint NFT" to mint your Penguin NFT
+   - Click "Mint NFT" to mint your Wartime Penguins NFT
 
 Your Penguin NFT will be minted as a GIF, computed using the Cartesi coprocessor!
 
@@ -98,4 +98,4 @@ Your Penguin NFT will be minted as a GIF, computed using the Cartesi coprocessor
 
 ##
 
-Congratulations! You've got yourself a battle-ready penguin powered by the mighty Cartesi coprocessor!
+Congratulations! You've got yourself a battle-ready penguin squad powered by the mighty Cartesi Coprocessor!
