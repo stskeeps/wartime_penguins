@@ -56,14 +56,19 @@ Replace the placeholders:
 
 ## Starting the Application
 
-1. Start the proxy server:
+1. Navigate to the frontend directory and install dependencies:
 ```bash
 cd frontend
+npm install
+```
+
+2. Start the proxy server:
+```bash
 node proxy-server.js
 ```
 You should see: "Proxy server listening on port 3001"
 
-2. In another terminal window, start the React app:
+3. In another terminal window, start the React app:
 ```bash
 npm start
 ```
